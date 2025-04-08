@@ -17,7 +17,7 @@ This is the official Pytorch implementation of the CVPR 2024 paper "Scene Adapti
 
 ## Conda Installation (same as [RVT](https://github.com/uzh-rpg/RVT))
 ```Bash
-conda create -y -n rvt python=3.9 pip
+conda create -y -n sast python=3.9 pip
 conda activate sast
 conda config --set channel_priority flexible
 
