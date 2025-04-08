@@ -17,7 +17,7 @@ This is the official Pytorch implementation of the CVPR 2024 paper "Scene Adapti
 
 ## Conda Installation (same as [RVT](https://github.com/uzh-rpg/RVT))
 ```Bash
-conda create -y -n rvt python=3.9 pip
+conda create -y -n sast python=3.9 pip
 conda activate sast
 conda config --set channel_priority flexible
 
@@ -28,9 +28,9 @@ hydra-core=1.3.2 einops=0.6.0 torchdata=0.6.0 tqdm numba
 pytorch=2.0.0 torchvision=0.15.0 pytorch-cuda=$CUDA_VERSION
 -c pytorch -c nvidia -c conda-forge
 
-python -m pip install pytorch-lightning==1.8.6 wandb==0.14.0
-pandas==1.5.3 plotly==5.13.1 opencv-python==4.6.0.66 tabulate==0.9.0
-pycocotools==2.0.6 bbox-visualizer==0.1.0 StrEnum=0.4.10
+python -m pip install pytorch-lightning==1.8.6 wandb==0.14.0 \
+pandas==1.5.3 plotly==5.13.1 opencv-python==4.6.0.66 tabulate==0.9.0 \
+pycocotools==2.0.6 bbox-visualizer==0.1.0 StrEnum==0.4.10
 python -m pip install 'git+https://github.com/facebookresearch/detectron2.git'
 ```
 Detectron2 is not strictly required but speeds up the evaluation.
