@@ -15,6 +15,7 @@ from multiprocessing import get_context
 from pathlib import Path
 import shutil
 import sys
+import random
 
 sys.path.append('../..')
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -37,6 +38,7 @@ class DataKeys(Enum):
     OutLabelDir = auto()
     OutEvReprDir = auto()
     SplitType = auto()
+    Matching = auto()
 
 
 class SplitType(Enum):
@@ -51,8 +53,8 @@ split_name_2_type = {
     'test': SplitType.TEST,
 }
 
-dataset_2_height = {'gen1': 240, 'gen4': 720}
-dataset_2_width = {'gen1': 304, 'gen4': 1280}
+dataset_2_height = {'gen1': 240, 'gen4': 720, 'arma': 720}
+dataset_2_width = {'gen1': 304, 'gen4': 1280, 'arma': 1280}
 
 # The following sequences would be discarded because all the labels would be removed after filtering:
 dirs_to_ignore = {
@@ -61,6 +63,7 @@ dirs_to_ignore = {
              '17-04-06_15-14-36_1159500000_1219500000',
              '17-04-11_15-13-23_122500000_182500000'),
     'gen4': (),
+    'arma': (),
 }
 
 
@@ -226,7 +229,7 @@ def remove_faulty_huge_bbox_filter(labels: np.ndarray, dataset_type: str) -> np.
 
 
 def crop_to_fov_filter(labels: np.ndarray, dataset_type: str) -> np.ndarray:
-    assert dataset_type in {'gen1', 'gen4'}, f'{dataset_type=}'
+    assert dataset_type in {'gen1', 'gen4', 'arma'}, f'{dataset_type=}'
     # In the gen1 and gen4 datasets the bounding box can be partially or completely outside the frame.
     # We fix this labeling error by cropping to the FOV.
     frame_height = dataset_2_height[dataset_type]
@@ -288,7 +291,7 @@ def get_base_delta_ts_for_labels_us(unique_label_ts_us: np.ndarray, dataset_type
     if dataset_type == 'gen1':
         delta_t_us_4hz = 250000
         return delta_t_us_4hz
-    assert dataset_type == 'gen4'
+    assert dataset_type == 'gen4' or dataset_type == 'arma'
     diff_us = np.diff(unique_label_ts_us)
     median_diff_us = np.median(diff_us)
 
@@ -338,7 +341,8 @@ def labels_and_ev_repr_timestamps(npy_file: Path,
                                   filter_cfg: DictConfig,
                                   align_t_ms: int,
                                   ts_step_ev_repr_ms: int,
-                                  dataset_type: str):
+                                  dataset_type: str,
+                                  matching_file=None):
     assert npy_file.exists()
     assert npy_file.suffix == '.npy'
     ts_step_frame_ms = 100
@@ -351,20 +355,27 @@ def labels_and_ev_repr_timestamps(npy_file: Path,
     sequence_labels = np.load(str(npy_file))
     assert len(sequence_labels) > 0
 
-    sequence_labels = apply_filters(labels=sequence_labels,
-                                    split_type=split_type,
-                                    filter_cfg=filter_cfg,
-                                    dataset_type=dataset_type)
+    # sequence_labels = apply_filters(labels=sequence_labels,
+    #                                 split_type=split_type,
+    #                                 filter_cfg=filter_cfg,
+    #                                 dataset_type=dataset_type)
     if sequence_labels.size == 0:
         raise NoLabelsException
+    
+    matching = np.genfromtxt(matching_file, delimiter=',', skip_header=True)
 
-    unique_ts_us = np.unique(np.asarray(sequence_labels['t'], dtype='int64'))
+    # unique_ts_us = np.unique(np.asarray(sequence_labels['t'], dtype='int64'))
+    unique_ts_us = np.unique(np.asarray(matching[:,1], dtype='int64'))
+
+    
 
     base_delta_ts_labels_us = get_base_delta_ts_for_labels_us(
         unique_label_ts_us=unique_ts_us, dataset_type=dataset_type)
 
     # We extract the first label at or after align_t_us to keep it as the reference for the label extraction.
     unique_ts_idx_first = np.searchsorted(unique_ts_us, align_t_us, side='left')
+    # print(unique_ts_idx_first)
+    # sys.exit(0)
 
     # Extract "frame" timestamps from labels and prepare ev repr ts computation
     num_ev_reprs_between_frame_ts = []
@@ -383,13 +394,18 @@ def labels_and_ev_repr_timestamps(npy_file: Path,
     frame_timestamps_us = np.asarray(frame_timestamps_us, dtype='int64')
     assert len(frame_timestamps_us) > 0, f'{npy_file=}'
 
-    start_indices_per_label = np.searchsorted(sequence_labels['t'], frame_timestamps_us, side='left')
-    end_indices_per_label = np.searchsorted(sequence_labels['t'], frame_timestamps_us, side='right')
+    start_indices_per_label = np.searchsorted(matching[:, 1], frame_timestamps_us, side='left')
+    end_indices_per_label = np.searchsorted(matching[:, 1], frame_timestamps_us, side='right')
+
+    print(start_indices_per_label, end_indices_per_label)
 
     # Create labels per "frame"
     labels_per_frame = []
     for idx_start, idx_end in zip(start_indices_per_label, end_indices_per_label):
-        labels = sequence_labels[idx_start:idx_end]
+        print(idx_start, idx_end)
+        labels = sequence_labels['class_id'][idx_start:idx_end]
+        print(labels)
+        sys.exit(0)
         label_time_us = labels['t'][0]
         assert np.all(labels['t'] == label_time_us)
         labels_per_frame.append(labels)
@@ -543,6 +559,7 @@ def process_sequence(dataset: str,
     out_labels_dir = sequence_data[DataKeys.OutLabelDir]
     out_ev_repr_dir = sequence_data[DataKeys.OutEvReprDir]
     split_type = sequence_data[DataKeys.SplitType]
+    matching = sequence_data[DataKeys.Matching]
     assert out_labels_dir.is_dir()
     assert ts_step_ev_repr_ms > 0
     assert bool(ev_repr_num_events is not None) ^ bool(ev_repr_delta_ts_ms is not None), \
@@ -558,7 +575,9 @@ def process_sequence(dataset: str,
                 filter_cfg=filter_cfg,
                 align_t_ms=align_t_ms,
                 ts_step_ev_repr_ms=ts_step_ev_repr_ms,
-                dataset_type=dataset)
+                dataset_type=dataset,
+                matching_file=matching
+                )
     except NoLabelsException:
         parent_dir = out_labels_dir.parent
         print(f'No labels after filtering. Deleting {str(parent_dir)}')
@@ -686,6 +705,62 @@ def get_configuration(ev_repr_yaml_config: Path, extraction_yaml_config: Path) -
     config = OmegaConf.merge(config_schema, config)
     return config
 
+def test_armasuisse():
+    path = Path("/datasets/armasuisse/StStephan/drone/2024_01_10_112814_drone_000/events_left_final.h5")
+    with H5Reader(path) as h5_reader:
+        height, width = h5_reader.get_height_and_width()
+        print(height, width)
+        print(len(h5_reader.time))
+
+
+# armasuisse vars
+TRAIN_RATIO = 0.8
+VAL_RATIO = 0.2
+
+# paths for armasuisse
+EVENT_FILE = "events_left_final.h5"
+LABEL_FILE = "labels_events_left.npy"
+MATCHING_FILE = "frames_ts.csv"
+
+def split_dataset(path):
+    all_directories = os.listdir(path)
+    random.seed(42)
+    random.shuffle(all_directories)
+
+    total_directories = len(all_directories)
+    train_size = int(TRAIN_RATIO * total_directories)
+
+    directories = {}
+    # directories['train'] = all_directories[:train_size]
+    # directories['val'] = all_directories[train_size:]
+
+    return all_directories[:train_size], all_directories[train_size:]
+
+
+def create_sequence(source_dir_parent, source_dir_name, target_dir):
+    out_path = target_dir / source_dir_name
+
+    out_labels_path = out_path / "labels_v2"
+    out_ev_repr_parent_path = out_path / "event_representations_v2"
+    out_ev_repr_path = out_ev_repr_parent_path / ev_repr_string
+
+    os.makedirs(out_path, exist_ok=True)
+    os.makedirs(out_labels_path, exist_ok=True)
+    os.makedirs(out_ev_repr_path, exist_ok = True)
+    
+    h5f_path = source_dir_parent / source_dir_name / EVENT_FILE
+    npy_file = source_dir_parent / source_dir_name / LABEL_FILE
+    matching_file = source_dir_parent / source_dir_name / MATCHING_FILE
+    sequence_data = {
+        DataKeys.InNPY: npy_file,
+        DataKeys.InH5: h5f_path,
+        DataKeys.OutLabelDir: out_labels_path,
+        DataKeys.OutEvReprDir: out_ev_repr_path,
+        DataKeys.SplitType: 'train',
+        DataKeys.Matching: matching_file
+    }
+    return sequence_data
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -694,15 +769,15 @@ if __name__ == '__main__':
     parser.add_argument('ev_repr_yaml_config', help='Path to event representation yaml config file')
     parser.add_argument('extraction_yaml_config', help='Path to event window extraction yaml config file')
     parser.add_argument('bbox_filter_yaml_config', help='Path to bbox filter yaml config file')
-    parser.add_argument('-ds', '--dataset', default='gen1', help='gen1 or gen4')
+    parser.add_argument('-ds', '--dataset', default='gen1', help='gen1 or gen4 or arma')
     parser.add_argument('-np', '--num_processes', type=int, default=1, help="Num proceesses to run in parallel")
     args = parser.parse_args()
 
     num_processes = args.num_processes
 
     dataset = args.dataset
-    assert dataset in ('gen1', 'gen4')
-    downsample_by_2 = True if dataset == 'gen4' else False
+    assert dataset in ('gen1', 'gen4', 'arma')
+    downsample_by_2 = True if dataset == 'gen4' or dataset == 'arma' else False
 
     config = get_configuration(ev_repr_yaml_config=Path(args.ev_repr_yaml_config),
                                extraction_yaml_config=Path(args.extraction_yaml_config))
@@ -721,47 +796,19 @@ if __name__ == '__main__':
     ev_repr = ev_repr_factory.create(height=height, width=width)
     ev_repr_string = ev_repr_factory.name
 
-    dataset_input_path = Path(args.input_dir)
-    train_path = dataset_input_path / 'train'
-    val_path = dataset_input_path / 'val'
-    test_path = dataset_input_path / 'test'
     target_dir = Path(args.target_dir)
-    os.makedirs(target_dir, exist_ok=True)
-
-    assert train_path.exists(), f'{train_path=}'
-    assert val_path.exists(), f'{val_path=}'
-    assert test_path.exists(), f'{test_path=}'
-
+    input_dir = Path(args.input_dir)
     seq_data_list = list()
-    for split in [train_path, val_path, test_path]:
-        split_out_dir = target_dir / split.name
-        os.makedirs(split_out_dir, exist_ok=True)
-        for npy_file in split.iterdir():
-            if npy_file.suffix != '.npy':
-                continue
-            h5f_path = npy_file.parent / (
-                    npy_file.stem.split('bbox')[0] + f"td{'.dat' if dataset == 'gen1' else ''}.h5")
-            assert h5f_path.exists(), f'{h5f_path=}'
+    if args.dataset == "arma":
+        train, val = split_dataset(input_dir)
+        out_path = target_dir / "train"
+        for train_path in train:
+            sequence_data = create_sequence(input_dir, train_path, out_path)
+            seq_data_list.append(sequence_data)
 
-            dir_name = npy_file.stem.split('_bbox')[0]
-            if dir_name in dirs_to_ignore[dataset]:
-                continue
-            out_seq_path = split_out_dir / dir_name
-
-            out_labels_path = out_seq_path / 'labels_v2'
-            os.makedirs(out_labels_path, exist_ok=True)
-
-            out_ev_repr_parent_path = out_seq_path / 'event_representations_v2'
-            out_ev_repr_path = out_ev_repr_parent_path / ev_repr_string
-            os.makedirs(out_ev_repr_path, exist_ok=True)
-
-            sequence_data = {
-                DataKeys.InNPY: npy_file,
-                DataKeys.InH5: h5f_path,
-                DataKeys.OutLabelDir: out_labels_path,
-                DataKeys.OutEvReprDir: out_ev_repr_path,
-                DataKeys.SplitType: split_name_2_type[split.name],
-            }
+        out_path = target_dir / "val"
+        for val_path in val:
+            sequence_data = create_sequence(input_dir, train_path, out_path)
             seq_data_list.append(sequence_data)
 
     ev_repr_num_events = None
