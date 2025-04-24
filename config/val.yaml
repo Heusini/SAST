@@ -1,5 +1,5 @@
 defaults:
-  - dataset: ???
+  - dataset: gen4
   - model: rnndet
   - _self_
 

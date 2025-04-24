@@ -185,7 +185,7 @@ class LayerScale(nn.Module):
         gamma = self.gamma
         return x.mul_(gamma) if self.inplace else x * gamma
     
-\
+
 def window_partition(x: torch.Tensor, window_size: Tuple[int, int]) -> torch.Tensor:
     B, H, W, C = x.shape
     _assert(H % window_size[0] == 0, f'height ({H}) must be divisible by window ({window_size[0]})')
