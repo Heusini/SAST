@@ -2,6 +2,7 @@ import pytorch_lightning as pl
 from omegaconf import DictConfig
 
 from modules.data.genx import DataModule as genx_data_module
+from modules.data.armasuisse import ArmaDataModule as genarma_data_module
 from modules.detection import Module as rnn_det_module
 from models.detection.recurrent_backbone.sast_rnn import RNNDetector
 
@@ -22,6 +23,12 @@ def fetch_data_module(config: DictConfig) -> pl.LightningDataModule:
     dataset_str = config.dataset.name
     if dataset_str in {'gen1', 'gen4'}:
         return genx_data_module(config.dataset,
+                                num_workers_train=num_workers_train,
+                                num_workers_eval=num_workers_eval,
+                                batch_size_train=batch_size_train,
+                                batch_size_eval=batch_size_eval)
+    if dataset_str in {'arma'}:
+        return genarma_data_module(config.dataset,
                                 num_workers_train=num_workers_train,
                                 num_workers_eval=num_workers_eval,
                                 batch_size_train=batch_size_train,
