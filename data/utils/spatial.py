@@ -5,11 +5,13 @@ from data.utils.types import DatasetType
 _type_2_hw = {
     DatasetType.GEN1: (240, 304),
     DatasetType.GEN4: (720, 1280),
+    DatasetType.ARMA: (360, 640),
 }
 
 _str_2_type = {
     'gen1': DatasetType.GEN1,
     'gen4': DatasetType.GEN4,
+    'arma': DatasetType.ARMA,
 }
 
 
