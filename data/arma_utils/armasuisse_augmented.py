@@ -13,7 +13,8 @@ import cv2
 from omegaconf import DictConfig
 from data.utils.types import DataType, LoaderDataDictGenX, DatasetMode
 from data.utils.augmentor import RandomSpatialAugmentorGenX
-from data.arma_utils.labels import ObjectLabelFactory, SparselyBatchedObjectLabels
+from data.arma_utils.labels import ObjectLabelFactory
+from data.utils.sparsely_batched_object_labels import SparselyBatchedObjectLabels
 from data.arma_utils.armasuisse import ArmasuisseDataset
 
 class ArmasuisseAugmented(Dataset):
