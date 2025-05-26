@@ -10,7 +10,8 @@ from torch.nn.functional import interpolate
 from torchvision.transforms import InterpolationMode
 from torchvision.transforms.functional import rotate
 
-from data.genx_utils.labels import ObjectLabels, SparselyBatchedObjectLabels
+from data.utils.object_labels import ObjectLabels
+from data.utils.sparsely_batched_object_labels import SparselyBatchedObjectLabels
 from data.utils.types import DataType, LoaderDataDictGenX
 from utils.helpers import torch_uniform_sample_scalar
 
@@ -246,6 +247,7 @@ class RandomSpatialAugmentorGenX:
             return {key: RandomSpatialAugmentorGenX._zoom_in_and_rescale_recursive(
                 value, zoom_coordinates_x0y0=zoom_coordinates_x0y0, zoom_in_factor=zoom_in_factor, datatype=datatype) \
                 for key, value in input_.items()}
+        print(type(input_))
         raise NotImplementedError
 
     def _rotate(self, data_dict: LoaderDataDictGenX) -> LoaderDataDictGenX:
@@ -319,6 +321,7 @@ class RandomSpatialAugmentorGenX:
         if isinstance(input_, abc.Mapping):
             return {key: RandomSpatialAugmentorGenX._flip_recursive(value, flip_type=flip_type, datatype=datatype) \
                     for key, value in input_.items()}
+        print(type(input_))
         raise NotImplementedError
 
     @staticmethod
