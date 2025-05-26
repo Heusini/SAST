@@ -357,7 +357,9 @@ class ObjectLabels(ObjectLabelBase):
     @staticmethod
     def get_labels_as_batched_tensor(obj_label_list: List[ObjectLabels], format_: str = 'yolox') -> th.Tensor:
         num_object_frames = len(obj_label_list)
-        assert num_object_frames > 0
+        if num_object_frames == 0:
+            return None
+        # assert num_object_frames > 0
         max_num_labels_per_object_frame = max([len(x) for x in obj_label_list])
         assert max_num_labels_per_object_frame > 0
 
