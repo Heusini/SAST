@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from data.genx_utils.labels import SparselyBatchedObjectLabels
+from data.utils.sparsely_batched_object_labels import SparselyBatchedObjectLabels
 from data.genx_utils.sequence_base import SequenceBase
 from data.utils.types import DataType, DatasetType, LoaderDataDictGenX
 from utils.timers import TimerDummy as Timer

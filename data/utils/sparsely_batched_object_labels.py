@@ -8,6 +8,8 @@ import torch as th
 from einops import rearrange
 from torch.nn.functional import pad
 
+from data.utils.object_labels import ObjectLabels
+
 class SparselyBatchedObjectLabels:
     def __init__(self, sparse_object_labels_batch: List[Optional[ObjectLabels]]):
         # Can contain None elements that indicate missing labels.

@@ -9,7 +9,7 @@ from torch.utils.data import ConcatDataset, Dataset
 from torch.utils.data.sampler import WeightedRandomSampler
 from tqdm import tqdm
 
-from data.genx_utils.labels import SparselyBatchedObjectLabels
+from data.utils.sparsely_batched_object_labels import SparselyBatchedObjectLabels
 from data.genx_utils.sequence_rnd import SequenceForRandomAccess
 from data.utils.augmentor import RandomSpatialAugmentorGenX
 from data.utils.types import DatasetMode, LoaderDataDictGenX, DatasetType, DataType

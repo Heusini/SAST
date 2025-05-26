@@ -16,7 +16,9 @@ import torchvision
 import numpy as np
 import cv2
 from data.utils.types import DataType, LoaderDataDictGenX, DatasetMode
-from data.arma_utils.labels import ObjectLabelFactory, SparselyBatchedObjectLabels
+from data.arma_utils.labels import ObjectLabelFactory
+from data.utils.object_labels import ObjectLabels
+from data.utils.sparsely_batched_object_labels import SparselyBatchedObjectLabels
 
 class Sequence:
     def __init__(self, data_paths: List[Path], label_paths: List[Path]):

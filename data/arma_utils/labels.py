@@ -9,6 +9,7 @@ from einops import rearrange
 from torch.nn.functional import pad
 
 from data.utils.object_label_base import ObjectLabelBase
+from data.utils.object_labels import ObjectLabels
 
 class ObjectLabelFactory(ObjectLabelBase):
     def __init__(self,
