@@ -55,15 +55,15 @@ def loaded_label_to_prophesee(loaded_labels: ObjectLabels) -> np.ndarray:
     return loaded_label_proph
 
 
-def to_prophesee(loaded_label_list: LOADED_LABELS, yolox_pred_list: YOLOX_PRED_PROCESSED) -> \
+def to_prophesee(loaded_label_list: LOADED_LABELS, yolox_pred_list: YOLOX_PRED_PROCESSED, time = None) -> \
         Tuple[List[np.ndarray], List[np.ndarray]]:
-    assert len(loaded_label_list) == len(yolox_pred_list)
+    # assert len(loaded_label_list) == len(yolox_pred_list)
 
     loaded_label_list_proph = []
     yolox_pred_list_proph = []
-    for loaded_labels, yolox_preds in zip(loaded_label_list, yolox_pred_list):
+    time = 1
+    for loaded_labels in loaded_label_list:
         # TODO: use loaded_label_to_prophesee func here
-        time = None
         # --- LOADED LABELS ---
         loaded_labels.numpy_()
         loaded_label_proph = np.zeros((len(loaded_labels),), dtype=BBOX_DTYPE)
@@ -78,10 +78,14 @@ def to_prophesee(loaded_label_list: LOADED_LABELS, yolox_pred_list: YOLOX_PRED_P
                 time = time.item()
         loaded_label_list_proph.append(loaded_label_proph)
 
-        # --- YOLOX PREDICTIONS ---
-        # Assumes batch of post-processed predictions from YoloX Head.
-        # See postprocessing: https://github.com/Megvii-BaseDetection/YOLOX/blob/a5bb5ab12a61b8a25a5c3c11ae6f06397eb9b296/yolox/utils/boxes.py#L32
-        # Detections ordered as (x1, y1, x2, y2, obj_conf, class_conf, class_pred)
+    # --- YOLOX PREDICTIONS ---
+    # Assumes batch of post-processed predictions from YoloX Head.
+    # See postprocessing: https://github.com/Megvii-BaseDetection/YOLOX/blob/a5bb5ab12a61b8a25a5c3c11ae6f06397eb9b296/yolox/utils/boxes.py#L32
+    # Detections ordered as (x1, y1, x2, y2, obj_conf, class_conf, class_pred)
+
+    # If we do not have labels our time = 1
+    # Maybe affects visualization should not have affect on training
+    for yolox_preds in yolox_pred_list:
         num_pred = 0 if yolox_preds is None else yolox_preds.shape[0]
         yolox_pred_proph = np.zeros((num_pred,), dtype=BBOX_DTYPE)
         if num_pred > 0:
