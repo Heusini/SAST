@@ -4,12 +4,11 @@ from pathlib import Path
 import numpy as np
 from omegaconf import DictConfig
 from torch.utils.data import ConcatDataset, Dataset, DataLoader
-from data.genx_utils.labels import SparselyBatchedObjectLabels
 from data.utils.types import DatasetMode, DatasetSamplingMode
-from data.arma_utils.collate import custom_collate_rnd, custom_collate_streaming
+from data.utils.collate import custom_collate_rnd, custom_collate_streaming
 from tqdm import tqdm
 
-from data.arma_utils.armasuisse import build as build_arma
+from data.arma_utils.armasuisse_augmented import ArmasuisseAugmented
 
 
 
@@ -63,10 +62,10 @@ class ArmaDataModule(pl.LightningDataModule):
         if stage == 'fit':
             if self.train_sampling_mode in (DatasetSamplingMode.RANDOM, DatasetSamplingMode.MIXED):
                 self.sampling_mode_2_dataset[DatasetSamplingMode.RANDOM] = \
-                    build_random_access_dataset_arma(dataset_mode=DatasetMode.TRAIN, dataset_config=self.dataset_config)
+                    ArmasuisseAugmented.build(dataset_mode=DatasetMode.TRAIN, dataset_config=self.dataset_config)
 
 
-            self.validation_dataset = build_random_access_dataset_arma(dataset_mode=DatasetMode.VALIDATION, 
+            self.validation_dataset = ArmasuisseAugmented.build(dataset_mode=DatasetMode.VALIDATION, 
                                                               dataset_config=self.dataset_config)
 
             # stream not implemented yet
@@ -108,7 +107,6 @@ class ArmaDataModule(pl.LightningDataModule):
 
 def build_random_access_dataset_arma(dataset_mode: DatasetMode, dataset_config: DictConfig):
     dataset_path = Path(dataset_config.path)
-    print(dataset_path)
     assert dataset_path.is_dir(), f'{str(dataset_path)}'
     mode2str = {DatasetMode.TRAIN: 'train',
                 DatasetMode.VALIDATION: 'val',
