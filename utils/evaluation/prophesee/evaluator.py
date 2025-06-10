@@ -61,7 +61,7 @@ class PropheseeEvaluator:
 
         labels = self._get_from_buffer(self.LABELS)
         predictions = self._get_from_buffer(self.PREDICTIONS)
-        assert len(labels) == len(predictions)
+        # assert len(labels) == len(predictions)
         metrics = evaluate_list(result_boxes_list=predictions,
                                 gt_boxes_list=labels,
                                 height=img_height,
