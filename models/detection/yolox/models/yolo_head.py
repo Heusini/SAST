@@ -2,6 +2,7 @@
 Original Yolox Head code with slight modifications
 """
 import math
+import sys
 from typing import Dict, Optional
 
 import torch
@@ -303,7 +304,10 @@ class YOLOXHead(nn.Module):
         cls_preds = outputs[:, :, 5:]  # [batch, n_anchors_all, n_cls]
 
         # calculate targets
-        nlabel = (labels.sum(dim=2) > 0).sum(dim=1)  # number of objects
+        if labels == None or len(labels) == 0 :
+            nlabel = outputs.new_zeros(outputs.shape[0], dtype=torch.int32)
+        else:
+            nlabel = (labels.sum(dim=2) > 0).sum(dim=1)  # number of objects
 
         total_num_anchors = outputs.shape[1]
         x_shifts = torch.cat(x_shifts, 1)  # [1, n_anchors_all]

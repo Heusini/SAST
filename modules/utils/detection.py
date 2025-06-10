@@ -3,8 +3,9 @@ from typing import List, Optional, Union, Tuple, Dict, Any
 
 import torch
 import torch as th
+import numpy as np
 
-from data.genx_utils.labels import SparselyBatchedObjectLabels
+from data.utils.sparsely_batched_object_labels import SparselyBatchedObjectLabels
 from data.utils.types import BackboneFeatures, LstmStates, DatasetSamplingMode
 
 
@@ -61,7 +62,10 @@ class EventReprSelector:
             self, event_representations: th.Tensor, selected_indices: Optional[List[int]] = None) -> None:
         if selected_indices is not None:
             assert len(selected_indices) > 0
+        else:
+            selected_indices = np.arange(0, event_representations.shape[0]).tolist()
         self.repr_list.extend(x[0] for x in event_representations[selected_indices].split(1))
+        # print(f"{self.repr_list=}")
 
     def get_event_representations_as_list(
             self, start_idx: int = 0, end_idx: Optional[int] = None) -> Optional[List[th.Tensor]]:
