@@ -21,6 +21,8 @@ class DataType(Enum):
     IS_PADDED_MASK = auto()
     IS_FIRST_SAMPLE = auto()
     TOKEN_MASK = auto()
+    EVENT_PATH = auto()
+    LABEL_PATH = auto()
 
 
 class DatasetType(Enum):
