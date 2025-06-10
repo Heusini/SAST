@@ -42,8 +42,8 @@ class ArmasuisseAugmented(Dataset):
         return len(self.armasuisse_dataset)
 
     @staticmethod
-    def build(dataset_mode: DatasetMode, config: DictConfig):
-        path = Path(config.path)
+    def build(dataset_mode: DatasetMode, dataset_config: DictConfig):
+        path = Path(dataset_config.path)
         assert path.exists(), f"provided Armasuisse path {path} does not exist"
         PATHS = {
             "train": path / "train",
@@ -57,9 +57,9 @@ class ArmasuisseAugmented(Dataset):
         assert data_folder.is_dir(), f"Train folder ({data_folder}) doesn't exist maybe structure is wrong of the preprocessed data"
         dataset = ArmasuisseAugmented(
             data_folder,
-            config.sequence_length,
-            tuple(config.resolution_hw),
-            config.data_augmentation,
+            dataset_config.sequence_length,
+            tuple(dataset_config.resolution_hw),
+            dataset_config.data_augmentation,
         )
         return dataset
 

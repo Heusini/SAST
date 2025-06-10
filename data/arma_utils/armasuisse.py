@@ -32,7 +32,7 @@ class Sequence:
 # this is specific to the armasuisse preprocessed data
 def create_sequences(path: Path, sequence_length: int):
     seq_list = list()
-    event_folder = Path("event_representation")
+    event_folder = Path("events")
     label_folder = Path("labels")
     for dir in os.listdir(path):
         event_path = path / dir / event_folder
@@ -73,12 +73,19 @@ class ArmasuisseDataset(Dataset):
 
         events = list()
         labels = list()
+        # event_paths = list()
+        # label_paths = list()
         for event_path in sequence.data_paths:
-            event = torch.load(event_path)
+            event = np.load(event_path)
+            # event_paths.append(str(event_path))
+            event = event[list(event.keys())[0]]
+            event = torch.from_numpy(event)
             events.append(event)
 
         for label_path in sequence.label_paths:
             label = np.load(label_path)
+            # label_paths.append(str(label_path))
+            label = label[list(label.keys())[0]]
             label = ObjectLabelFactory.from_structured_array(label,
                                                              self.resolution_hw,
                                                              None)
@@ -93,6 +100,8 @@ class ArmasuisseDataset(Dataset):
             DataType.OBJLABELS_SEQ: sparse_labels,
             DataType.IS_FIRST_SAMPLE: is_first_sample,
             DataType.IS_PADDED_MASK: is_padded_mask,
+            # DataType.EVENT_PATH: event_paths,
+            # DataType.LABEL_PATH: label_paths,
         }
         return out
 
