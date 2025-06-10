@@ -48,7 +48,7 @@ class YoloXDetector(th.nn.Module):
         with CudaTimer(device=device, timer_name="FPN"):
             fpn_features = self.fpn(backbone_features)
         if self.training:
-            assert targets is not None
+            # assert targets is not None
             with CudaTimer(device=device, timer_name="HEAD + Loss"):
                 outputs, losses = self.yolox_head(fpn_features, targets)
             return outputs, losses
