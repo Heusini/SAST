@@ -57,9 +57,10 @@ class DetectionVizCallback(VizCallbackBase):
             prediction_img = ev_img.copy()
             draw_bboxes(prediction_img, predictions_proph, labelmap=self.label_map)
 
-            labels_proph = outputs[ObjDetOutput.LABELS_PROPH][sample_idx]
             label_img = ev_img.copy()
-            draw_bboxes(label_img, labels_proph, labelmap=self.label_map)
+            if sample_idx < len(outputs[ObjDetOutput.LABELS_PROPH]):
+                labels_proph = outputs[ObjDetOutput.LABELS_PROPH][sample_idx]
+                draw_bboxes(label_img, labels_proph, labelmap=self.label_map)
 
             merged_img.append(rearrange([prediction_img, label_img], 'pl H W C -> (pl H) W C', pl=2, C=3))
             captions.append(f'sample_{sample_idx}')
@@ -79,12 +80,15 @@ class DetectionVizCallback(VizCallbackBase):
 
         predictions_proph = outputs[ObjDetOutput.PRED_PROPH]
         prediction_img = ev_img.copy()
-        draw_bboxes(prediction_img, predictions_proph, labelmap=self.label_map)
+        if len(predictions_proph) > 0:
+            print(predictions_proph)
+            draw_bboxes(prediction_img, predictions_proph, labelmap=self.label_map)
         self.add_to_buffer(DetectionVizEnum.PRED_IMG_PROPH, prediction_img)
 
         labels_proph = outputs[ObjDetOutput.LABELS_PROPH]
         label_img = ev_img.copy()
-        draw_bboxes(label_img, labels_proph, labelmap=self.label_map)
+        if labels_proph is not None:
+            draw_bboxes(label_img, labels_proph, labelmap=self.label_map)
         self.add_to_buffer(DetectionVizEnum.LABEL_IMG_PROPH, label_img)
 
     def on_validation_epoch_end_custom(self, logger: WandbLogger):
