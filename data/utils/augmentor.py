@@ -191,7 +191,7 @@ class RandomSpatialAugmentorGenX:
         zoom_window_h, zoom_window_w = int(height / rand_zoom_in_factor), int(width / rand_zoom_in_factor)
         latest_objframe = get_most_recent_objframe(data_dict=data_dict, check_if_nonempty=True)
         if latest_objframe is None:
-            warn(message=NO_LABEL_WARN_MSG, category=UserWarning, stacklevel=2)
+            # warn(message=NO_LABEL_WARN_MSG, category=UserWarning, stacklevel=2)
             return data_dict
         x0_sampled, y0_sampled = randomly_sample_zoom_window_from_objframe(
             objframe=latest_objframe, zoom_window_height=zoom_window_h, zoom_window_width=zoom_window_w)
@@ -247,7 +247,6 @@ class RandomSpatialAugmentorGenX:
             return {key: RandomSpatialAugmentorGenX._zoom_in_and_rescale_recursive(
                 value, zoom_coordinates_x0y0=zoom_coordinates_x0y0, zoom_in_factor=zoom_in_factor, datatype=datatype) \
                 for key, value in input_.items()}
-        print(type(input_))
         raise NotImplementedError
 
     def _rotate(self, data_dict: LoaderDataDictGenX) -> LoaderDataDictGenX:
@@ -321,7 +320,6 @@ class RandomSpatialAugmentorGenX:
         if isinstance(input_, abc.Mapping):
             return {key: RandomSpatialAugmentorGenX._flip_recursive(value, flip_type=flip_type, datatype=datatype) \
                     for key, value in input_.items()}
-        print(type(input_))
         raise NotImplementedError
 
     @staticmethod
