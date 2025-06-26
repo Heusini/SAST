@@ -3,3 +3,4 @@
 wandb/
 outputs/
 validation_logs/
+.hydra
