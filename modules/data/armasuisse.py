@@ -9,6 +9,7 @@ from data.utils.collate import custom_collate_rnd, custom_collate_streaming
 from tqdm import tqdm
 
 from data.arma_utils.armasuisse_augmented import ArmasuisseAugmented
+from data.arma_utils.armasuisse import ArmasuisseDataset
 
 
 
@@ -65,7 +66,7 @@ class ArmaDataModule(pl.LightningDataModule):
                     ArmasuisseAugmented.build(dataset_mode=DatasetMode.TRAIN, dataset_config=self.dataset_config)
 
 
-            self.validation_dataset = ArmasuisseAugmented.build(dataset_mode=DatasetMode.VALIDATION, 
+            self.validation_dataset = ArmasuisseDataset.build(dataset_mode=DatasetMode.VALIDATION, 
                                                               dataset_config=self.dataset_config)
 
             # stream not implemented yet
@@ -75,12 +76,18 @@ class ArmaDataModule(pl.LightningDataModule):
             #             dataset_mode=DatasetMode.TRAIN, dataset_config=self.dataset_config,
             #             batch_size=self.sampling_mode_2_train_batch_size[DatasetSamplingMode.STREAM],
             #             num_workers=self.sampling_mode_2_train_workers[DatasetSamplingMode.STREAM])
+        elif stage == 'validate':
+            self.validation_dataset = ArmasuisseDataset.build(dataset_mode=DatasetMode.TRAIN, 
+                                                              dataset_config=self.dataset_config)
+            print(f"{len(self.validation_dataset)=}")
+        elif stage == 'test':
+            print("test")
+            raise NotImplementedError
         else: 
-            pass
+            raise NotImplementedError
     def train_dataloader(self):
         dataset = self.sampling_mode_2_dataset[DatasetSamplingMode.RANDOM]
         batch_size = self.sampling_mode_2_train_batch_size[DatasetSamplingMode.RANDOM]
-        # ToDo fix magix numbers
         return DataLoader(dataset=dataset,
                           batch_size=batch_size,
                           shuffle=True,
@@ -92,7 +99,6 @@ class ArmaDataModule(pl.LightningDataModule):
     def val_dataloader(self):
         dataset = self.validation_dataset
         batch_size = self.overall_batch_size_eval
-        # ToDo fix magix numbers
         return DataLoader(dataset=dataset,
                           batch_size=batch_size,
                           shuffle=False,

@@ -31,9 +31,6 @@ class ArmasuisseAugmented(Dataset):
             automatic_randomization=True,
             augm_config=augmentation_config.random)
 
-
-
-
     def __getitem__(self, index: int):
         item = self.armasuisse_dataset[index]
         return self.spatial_augmentor(item)
