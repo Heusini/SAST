@@ -20,6 +20,8 @@ from utils.padding import InputPadderFromShape
 from .utils.detection import BackboneFeatureSelector, EventReprSelector, RNNStates, Mode, mode_2_string, \
     merge_mixed_batches
 
+from utils.timers import CudaTimer
+
 
 class Module(pl.LightningModule):
     def __init__(self, full_config: DictConfig):
@@ -100,10 +102,18 @@ class Module(pl.LightningModule):
                 event_tensor: th.Tensor,
                 previous_states: Optional[LstmStates] = None) \
             -> Tuple[th.Tensor, th.Tensor, th.Tensor, th.Tensor]:
-        output = self.mdl.forward_backbone(x=event_tensor,
-                        previous_states=previous_states)[0]
+
+        with CudaTimer(torch.device('cuda'), "SAST"):
+            output = self.mdl.forward_backbone(x=event_tensor,
+                            previous_states=previous_states)[0]
         output = [output[i] for i in [1, 2, 3, 4]]
         return output
+
+    def forward_shit(self, event_tensor: th.Tensor):
+        backbone_features, _, _ = self.mdl.forward_backbone(event_tensor)
+        fpn_features = self.mdl.fpn(backbone_features)
+        return fpn_features
+
     
     def get_worker_id_from_batch(self, batch: Any) -> int:
         return batch['worker_id']
@@ -267,20 +277,20 @@ class Module(pl.LightningModule):
             backbone_features, states, _ = self.mdl.forward_backbone(x=ev_tensors, previous_states=prev_states)
             prev_states = states
 
-            if collect_predictions:
-                current_labels, valid_batch_indices = sparse_obj_labels[tidx].get_valid_labels_and_batch_indices()
-                # Store backbone features that correspond to the available labels.
-                valid_batch_indices = valid_batch_indices if len(valid_batch_indices) > 0 else None
-                if (valid_batch_indices is None):
-                    print("No valid_batch_indices")
-                # if len(current_labels) > 0:
-                backbone_feature_selector.add_backbone_features(backbone_features=backbone_features,
-                                                                selected_indices=valid_batch_indices)
+            # if collect_predictions:
+            current_labels, valid_batch_indices = sparse_obj_labels[tidx].get_valid_labels_and_batch_indices()
+            # Store backbone features that correspond to the available labels.
+            valid_batch_indices = valid_batch_indices if len(valid_batch_indices) > 0 else None
+            if (valid_batch_indices is None):
+                print("No valid_batch_indices")
+            # if len(current_labels) > 0:
+            backbone_feature_selector.add_backbone_features(backbone_features=backbone_features,
+                                                            selected_indices=valid_batch_indices)
 
-                ev_repr_selector.add_event_representations(event_representations=ev_tensors,
-                                                               selected_indices=valid_batch_indices)
-                if len(current_labels) > 0:
-                    obj_labels.extend(current_labels)
+            ev_repr_selector.add_event_representations(event_representations=ev_tensors,
+                                                           selected_indices=valid_batch_indices)
+            if len(current_labels) > 0:
+                obj_labels.extend(current_labels)
 
         self.mode_2_rnn_states[mode].save_states_and_detach(worker_id=worker_id, states=prev_states)
         if len(obj_labels) == 0:
@@ -296,20 +306,24 @@ class Module(pl.LightningModule):
         loaded_labels_proph, yolox_preds_proph = to_prophesee(obj_labels, pred_processed)
         visualize_label = loaded_labels_proph[-1] if len(loaded_labels_proph) > 0  else None
         # For visualization, we only use the last item (per batch).
+        ka = ev_repr_selector.get_event_representations_as_list(start_idx=-1)[0].cpu()
         output = {
             ObjDetOutput.LABELS_PROPH: visualize_label,
             ObjDetOutput.PRED_PROPH: yolox_preds_proph[-1],
-            ObjDetOutput.EV_REPR: ev_repr_selector.get_event_representations_as_list(start_idx=-1)[0],
+            ObjDetOutput.EV_REPR: ka,
             ObjDetOutput.SKIP_VIZ: False,
         }
 
         if self.started_training:
+            print(f"{len(loaded_labels_proph)=}")
             self.mode_2_psee_evaluator[mode].add_labels(loaded_labels_proph)
             self.mode_2_psee_evaluator[mode].add_predictions(yolox_preds_proph)
 
         return output
 
     def validation_step(self, batch: Any, batch_idx: int) -> Optional[STEP_OUTPUT]:
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
         return self._val_test_step_impl(batch=batch, mode=Mode.VAL)
 
     def test_step(self, batch: Any, batch_idx: int) -> Optional[STEP_OUTPUT]:
@@ -325,8 +339,10 @@ class Module(pl.LightningModule):
         assert batch_size is not None
         assert hw_tuple is not None
         if psee_evaluator.has_data():
+            print("has_data")
             metrics = psee_evaluator.evaluate_buffer(img_height=hw_tuple[0],
                                                      img_width=hw_tuple[1])
+            print(f"{metrics=}")
             assert metrics is not None
 
             prefix = f'{mode_2_string[mode]}/'
@@ -424,7 +440,7 @@ class Module(pl.LightningModule):
     def configure_optimizers(self) -> Any:
         lr = self.train_config.learning_rate
         weight_decay = self.train_config.weight_decay
-        optimizer = th.optim.AdamW(self.mdl.parameters(), lr=lr, weight_decay=weight_decay)
+        optimizer = th.optim.AdamW(filter(lambda p: p.requires_grad,self.mdl.parameters()), lr=lr, weight_decay=weight_decay)
 
         scheduler_params = self.train_config.lr_scheduler
         if not scheduler_params.use:
