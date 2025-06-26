@@ -12,6 +12,7 @@ from typing import Any, List, Tuple
 import torch
 # import torch.utils.data
 from torch.utils.data import ConcatDataset, Dataset
+from omegaconf import DictConfig
 import torchvision
 import numpy as np
 import cv2
@@ -108,20 +109,25 @@ class ArmasuisseDataset(Dataset):
     def __len__(self) -> int:
         return len(self.sequences)
 
-def build(dataset_mode: DatasetMode, config):
-    path = Path(config.path)
-    assert path.exists(), f"provided Armasuisse path {path} does not exist"
+    @staticmethod
+    def build(dataset_mode: DatasetMode, dataset_config: DictConfig):
+        path = Path(dataset_config.path)
+        assert path.exists(), f"provided Armasuisse path {path} does not exist"
 
-    PATHS = {
-        "train": path / "train",
-        "val": path / "val"
-    }
+        PATHS = {
+            "train": path / "train",
+            "val": path / "val"
+        }
 
-    data_folder = PATHS[dataset_mode]
-    assert data_folder.is_dir(), f"Train folder ({data_folder}) doesn't exist maybe structure is wrong of the preprocessed data"
-    dataset = ArmasuisseDataset(
-        data_folder,
-        config.sequence_length,
-        tuple(config.resolution_hw),
-    )
-    return dataset
+        mode2str = {DatasetMode.TRAIN: 'train',
+                    DatasetMode.VALIDATION: 'val',
+                    DatasetMode.TESTING: 'test'}
+
+        data_folder = PATHS[mode2str[dataset_mode]]
+        assert data_folder.is_dir(), f"Train folder ({data_folder}) doesn't exist maybe structure is wrong of the preprocessed data"
+        dataset = ArmasuisseDataset(
+            data_folder,
+            dataset_config.sequence_length,
+            tuple(dataset_config.resolution_hw),
+        )
+        return dataset
