@@ -10,7 +10,7 @@ def get_ckpt_callback(config: DictConfig) -> ModelCheckpoint:
 
     prefix = 'val'
     if model_name == 'rnndet':
-        metric = 'AP'
+        metric = 'AP (all)'
         mode = 'max'
     else:
         raise NotImplementedError
