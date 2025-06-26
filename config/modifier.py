@@ -44,8 +44,10 @@ def dynamically_modify_train_config(config: DictConfig):
                 raise NotImplementedError
 
             num_classes = 3
-            if dataset_name == 'gen1' or dataset_name == 'arma':
+            if dataset_name == 'gen1': 
                 num_classes = 2
+            if dataset_name == 'arma':
+                num_classes = 1
 
             mdl_cfg.head.num_classes = num_classes
             print(f'Set {num_classes=} for detection head')
