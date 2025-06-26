@@ -1,0 +1,89 @@
+import os
+
+os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
+from pathlib import Path
+
+import torch
+from torch.backends import cuda, cudnn
+
+cuda.matmul.allow_tf32 = True
+cudnn.allow_tf32 = True
+torch.multiprocessing.set_sharing_strategy('file_system')
+
+import cv2
+import sys
+import hydra
+import numpy as np
+import bbox_visualizer as bbv
+from omegaconf import DictConfig, OmegaConf
+import pytorch_lightning as pl
+from pytorch_lightning.loggers import CSVLogger
+from pytorch_lightning.callbacks import ModelSummary
+
+from config.modifier import dynamically_modify_train_config
+from modules.utils.fetch import fetch_data_module, fetch_model_module
+from data.utils.types import DataType, LstmStates, ObjDetOutput, DatasetSamplingMode, BackboneFeatures
+from utils.padding import InputPadderFromShape
+
+import matplotlib.pyplot as plt
+
+@hydra.main(config_path='config', config_name='val', version_base='1.2')
+def main(config: DictConfig):
+    dynamically_modify_train_config(config)
+    # Just to check whether config can be resolved
+    OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
+
+    # print('------ Configuration ------')
+    # print(OmegaConf.to_yaml(config))
+    # print('---------------------------')
+
+    gpus = config.hardware.gpus
+    assert isinstance(gpus, int), 'no more than 1 GPU supported'
+    gpus = [gpus]
+
+    # ---------------------
+    # Data
+    # ---------------------
+    data_module = fetch_data_module(config=config)
+
+    # ---------------------
+    # Logging and Checkpoints
+    # ---------------------
+    logger = CSVLogger(save_dir='./validation_logs')
+    ckpt_path = Path(config.checkpoint)
+
+    # ---------------------
+    # Model
+    # ---------------------
+    
+    ckpt = torch.load(ckpt_path, map_location='cpu')
+    state_dict = ckpt["state_dict"]
+
+    backbone_dict = {k.replace("mdl.", ""): v 
+                 for k, v in state_dict.items() if k.startswith("mdl.backbone.")}
+
+
+    module = fetch_model_module(config=config)
+    module.mdl.backbone.load_state_dict(backbone_dict, strict=False)
+    for param in module.mdl.backbone.parameters():
+        param.requires_grad = False
+    module.mdl.backbone.eval()
+
+    for name, param in module.mdl.backbone.named_parameters():
+         print(name, param.requires_grad)
+    # module = module.load_from_checkpoint(str(ckpt_path), **{'full_config': config}, strict=False)
+
+    # module.eval()
+    # Get a batch (or a single sample wrapped as batch)
+
+
+
+if __name__ == '__main__':
+    # torch.multiprocessing.set_start_method('spawn')
+    main()

@@ -4,10 +4,11 @@ defaults:
 
 ckpt:
   path: "sast.ckpt"
+  # path: null
 
 training:
   precision: 16
-  max_epochs: 10000
+  max_epochs: 20
   max_steps: 600000
   learning_rate: 0.000346
   lr_scheduler:
@@ -17,7 +18,7 @@ training:
     div_factor: 20
     final_div_factor: 10000
 validation:
-  val_check_interval: 10000
+  val_check_interval: 5000
   check_val_every_n_epoch: null
 batch_size:
   train: 12

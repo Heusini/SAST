@@ -25,7 +25,7 @@ hardware:
     eval: 2
 dataset:
   train:
-    sampling: 'mixed'
+    sampling: 'random'
     random:
       weighted_sampling: False
     mixed:
