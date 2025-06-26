@@ -237,7 +237,7 @@ class YOLOXHead(nn.Module):
                 "cls_loss": losses[3], # predicted class
                 "l1_loss": losses[4],
                 # "l2_loss": losses[5],
-                "num_fg": losses[6],
+                "num_fg": losses[5],
             }
         self.hw = [x.shape[-2:] for x in inference_outputs]
         # [batch, n_anchors_all, 85]
