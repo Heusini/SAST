@@ -65,7 +65,6 @@ class EventReprSelector:
         else:
             selected_indices = np.arange(0, event_representations.shape[0]).tolist()
         self.repr_list.extend(x[0] for x in event_representations[selected_indices].split(1))
-        # print(f"{self.repr_list=}")
 
     def get_event_representations_as_list(
             self, start_idx: int = 0, end_idx: Optional[int] = None) -> Optional[List[th.Tensor]]:
