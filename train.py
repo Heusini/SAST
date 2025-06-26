@@ -130,7 +130,16 @@ def main(config: DictConfig):
     # if ckpt_path is not None and config.wandb.wandb.resume_only_weights:
     if ckpt_path:
         print('Resuming only the weights instead of the full training state')
-        module = module.load_from_checkpoint(str(ckpt_path), **{'full_config': config}, strict=True)
+        ckpt = torch.load(ckpt_path, map_location='cpu')
+        state_dict = ckpt["state_dict"]
+
+        backbone_dict = {k.replace("mdl.", ""): v 
+                     for k, v in state_dict.items() if k.startswith("mdl.backbone.")}
+
+        module.mdl.backbone.load_state_dict(backbone_dict, strict=False)
+        for param in module.mdl.backbone.parameters():
+            param.requires_grad = False
+        module.mdl.backbone.eval()
         ckpt_path = None
 
     # ---------------------
@@ -188,5 +197,5 @@ def main(config: DictConfig):
 
 
 if __name__ == '__main__':
-    # os.environ["WANDB_MODE"] = "disabled"
+    os.environ["WANDB_MODE"] = "disabled"
     main()

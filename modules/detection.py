@@ -306,7 +306,7 @@ class Module(pl.LightningModule):
         loaded_labels_proph, yolox_preds_proph = to_prophesee(obj_labels, pred_processed)
         visualize_label = loaded_labels_proph[-1] if len(loaded_labels_proph) > 0  else None
         # For visualization, we only use the last item (per batch).
-        ka = ev_repr_selector.get_event_representations_as_list(start_idx=-1)[0].cpu()
+        ka = ev_repr_selector.get_event_representations_as_list(start_idx=-1)[0]
         output = {
             ObjDetOutput.LABELS_PROPH: visualize_label,
             ObjDetOutput.PRED_PROPH: yolox_preds_proph[-1],
@@ -322,8 +322,6 @@ class Module(pl.LightningModule):
         return output
 
     def validation_step(self, batch: Any, batch_idx: int) -> Optional[STEP_OUTPUT]:
-        torch.cuda.empty_cache()
-        torch.cuda.synchronize()
         return self._val_test_step_impl(batch=batch, mode=Mode.VAL)
 
     def test_step(self, batch: Any, batch_idx: int) -> Optional[STEP_OUTPUT]:
