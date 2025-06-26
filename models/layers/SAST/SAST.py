@@ -119,7 +119,12 @@ class SAST_block(nn.Module):
             scores = scale * scores
             index_window = self.window_selection(scores)
             index_token, asy_index, K = self.token_selection(scores, index_window)
-            padding_index = index_token[torch.isin(index_token, asy_index, assume_unique=True, invert=True)] # Get padding index
+
+            # padding_index = index_token[torch.isin(index_token, asy_index, assume_unique=True, invert=True)] # Get padding index
+            # this should be the same as ^
+            mask = ~(index_token.unsqueeze(-1) == asy_index).any(-1)
+            padding_index = index_token[mask]
+            #####
             index_list1 = [index_window, index_token, padding_index, asy_index, K] # Buffer index list for reusing
         else:
             # Reuse index list
@@ -144,7 +149,11 @@ class SAST_block(nn.Module):
             # Selection Module 
             index_window = self.window_selection(scores) 
             index_token, asy_index, K = self.token_selection(scores, index_window)
-            padding_index = index_token[torch.isin(index_token, asy_index, assume_unique=True, invert=True)]
+            # padding_index = index_token[torch.isin(index_token, asy_index, assume_unique=True, invert=True)]
+            # this should be the same as ^
+            mask = ~(index_token.unsqueeze(-1) == asy_index).any(-1)
+            padding_index = index_token[mask]
+            #####
             index_list2 = [index_window, index_token, padding_index, asy_index, K]
         else:
             index_window, index_token, padding_index, asy_index, K = index_list2
