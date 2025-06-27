@@ -169,27 +169,28 @@ class Module(pl.LightningModule):
             P += sum(p) / sequence_len
             prev_states = states
 
-            current_labels, valid_batch_indices = sparse_obj_labels[tidx].get_valid_labels_and_batch_indices()
-            valid_batch_indices = valid_batch_indices if len(valid_batch_indices) > 0 else None
-            # Store backbone features that correspond to the available labels.
-            backbone_feature_selector.add_backbone_features(backbone_features=backbone_features,
-                                                            selected_indices=valid_batch_indices)
-            ev_repr_selector.add_event_representations(event_representations=ev_tensors,
-                                                       selected_indices=valid_batch_indices)
-            if len(current_labels) > 0:
-                obj_labels.extend(current_labels)
+            current_labels = sparse_obj_labels[tidx].sparse_object_labels_batch
+            obj_labels.append(current_labels)
+            # valid_batch_indices = valid_batch_indices if len(valid_batch_indices) > 0 else None
+            # # Store backbone features that correspond to the available labels.
+            # backbone_feature_selector.add_backbone_features(backbone_features=backbone_features,
+            #                                                 selected_indices=valid_batch_indices)
+            # ev_repr_selector.add_event_representations(event_representations=ev_tensors,
+            #                                            selected_indices=valid_batch_indices)
+            # if len(current_labels) > 0:
+            #     obj_labels.extend(current_labels)
 
         self.mode_2_rnn_states[mode].save_states_and_detach(worker_id=worker_id, states=prev_states)
         # assert len(obj_labels) > 0
         # Batch the backbone features and labels to parallelize the detection code.
-        selected_backbone_features = backbone_feature_selector.get_batched_backbone_features()
+        # selected_backbone_features = backbone_feature_selector.get_batched_backbone_features()
         labels_yolox = None
 
-        if len(obj_labels) > 0:
-            labels_yolox = ObjectLabels.get_labels_as_batched_tensor(obj_label_list=obj_labels, format_='yolox')
-            labels_yolox = labels_yolox.to(dtype=self.dtype)
+        # if len(obj_labels) > 0:
+        labels_yolox = ObjectLabels.get_labels_as_batched_tensor(obj_label_list=obj_labels, format_='yolox')
+        labels_yolox = labels_yolox.to(dtype=self.dtype)
 
-        predictions, losses = self.mdl.forward_detect(backbone_features=selected_backbone_features,
+        predictions, losses = self.mdl.forward_detect(backbone_features=backbone_features,
                                                       targets=labels_yolox)
 
         if self.mode_2_sampling_mode[mode] in (DatasetSamplingMode.MIXED, DatasetSamplingMode.RANDOM):
