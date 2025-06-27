@@ -41,6 +41,8 @@ def create_sequences(path: Path, sequence_length: int):
 
         event_files = os.listdir(event_path)
         label_files = os.listdir(label_path)
+        event_files.sort()
+        label_files.sort()
         assert_msg = f"event_len({len(event_files)}) != label_len({label_files}) for\n {event_path} and\n {label_path}"
         assert len(event_files) > 0
         assert len(event_files) == len(label_files), assert_msg
