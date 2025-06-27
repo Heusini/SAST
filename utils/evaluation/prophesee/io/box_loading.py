@@ -63,6 +63,8 @@ def to_prophesee(loaded_label_list: LOADED_LABELS, yolox_pred_list: YOLOX_PRED_P
     yolox_pred_list_proph = []
     time = 1
     for loaded_labels in loaded_label_list:
+        if len(loaded_labels) == 0:
+            continue
         # TODO: use loaded_label_to_prophesee func here
         # --- LOADED LABELS ---
         loaded_labels.numpy_()

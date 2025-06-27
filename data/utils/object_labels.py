@@ -20,7 +20,7 @@ class ObjectLabels(ObjectLabelBase):
 
     def rotate_(self, angle_deg: float):
         if len(self) == 0:
-            return
+            return self
         # (x0,y0)---(x1,y0)   p00---p10
         #  |             |    |       |
         #  |             |    |       |
@@ -70,11 +70,11 @@ class ObjectLabels(ObjectLabelBase):
         3) Extract the smaller canvas and rescale it back to the original resolution
         """
         if len(self) == 0:
-            return
+            return self
         assert len(zoom_coordinates_x0y0) == 2
         assert zoom_in_factor >= 1
         if zoom_in_factor == 1:
-            return
+            return self
         z_x0, z_y0 = zoom_coordinates_x0y0
         h_orig, w_orig = self.input_size_hw
         assert 0 <= z_x0 <= w_orig - 1
@@ -107,11 +107,11 @@ class ObjectLabels(ObjectLabelBase):
         2) Places the downscaled canvas into the original canvas at the top-left coordinates zoom_coordinates_x0y0
         """
         if len(self) == 0:
-            return
+            return self
         assert len(zoom_coordinates_x0y0) == 2
         assert zoom_out_factor >= 1
         if zoom_out_factor == 1:
-            return
+            return self
 
         h_orig, w_orig = self.input_size_hw
         self.scale_(scaling_multiplier=1 / zoom_out_factor)
@@ -126,10 +126,10 @@ class ObjectLabels(ObjectLabelBase):
 
     def scale_(self, scaling_multiplier: float):
         if len(self) == 0:
-            return
+            return self
         assert scaling_multiplier > 0
         if scaling_multiplier == 1:
-            return
+            return self
         img_ht, img_wd = self.input_size_hw
         new_img_ht = scaling_multiplier * img_ht
         new_img_wd = scaling_multiplier * img_wd
@@ -146,7 +146,7 @@ class ObjectLabels(ObjectLabelBase):
 
     def flip_lr_(self) -> None:
         if len(self) == 0:
-            return
+            return self
         self.x = self.input_size_hw[1] - 1 - self.x - self.w
 
     def get_labels_as_tensors(self, format_: str = 'yolox') -> th.Tensor:
@@ -169,6 +169,7 @@ class ObjectLabels(ObjectLabelBase):
     def get_labels_as_batched_tensor(obj_label_list: List[ObjectLabels], format_: str = 'yolox') -> th.Tensor:
         num_object_frames = len(obj_label_list)
         if num_object_frames == 0:
+            print("lol1")
             return None
         # assert num_object_frames > 0
         max_num_labels_per_object_frame = max([len(x) for x in obj_label_list])

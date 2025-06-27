@@ -43,7 +43,10 @@ class ObjectLabelFactory(ObjectLabelBase):
 
     def get_object_labels(self):
         if self.size == 0:
-            return None
+            object_labels = ObjectLabels(
+                    object_labels = th.zeros(0,7),
+                    input_size_hw = self.input_size_hw)
+            return object_labels
         else:
             object_labels = ObjectLabels(
                 object_labels=self.object_labels.clone(),
@@ -54,7 +57,10 @@ class ObjectLabelFactory(ObjectLabelBase):
 
     def __getitem__(self, item: int) -> ObjectLabels:
         if self.size == 0:
-            return None
+            object_labels = ObjectLabels(
+                    object_labels = th.zeros(0,7),
+                    input_size_hw = self.input_size_hw)
+            return object_labels
         object_labels = ObjectLabels(
             object_labels=self.object_labels.clone(),
             input_size_hw=self.input_size_hw)
