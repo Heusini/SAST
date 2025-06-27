@@ -312,6 +312,18 @@ class YOLOXHead(nn.Module):
         else:
             nlabel = (labels.sum(dim=2) > 0).sum(dim=1)  # number of objects
 
+        if len(nlabel) < outputs.shape[0]:
+            print("probably error with labels")
+            print(f"{labels=}")
+            print(f"{labels.shape=}")
+            print()
+            print(f"{nlabel=}")
+            print(f"{nlabel.shape=}")
+            print()
+            print(f"{outputs.shape=}")
+            print("label error finish")
+
+
         total_num_anchors = outputs.shape[1]
         x_shifts = torch.cat(x_shifts, 1)  # [1, n_anchors_all]
         y_shifts = torch.cat(y_shifts, 1)  # [1, n_anchors_all]
