@@ -169,8 +169,12 @@ class Module(pl.LightningModule):
             P += sum(p) / sequence_len
             prev_states = states
 
-            current_labels = sparse_obj_labels[tidx].sparse_object_labels_batch
-            obj_labels.append(current_labels)
+            for l in sparse_obj_labels[tidx].sparse_object_labels_batch:
+                if l is None:
+                    print("crazy")
+            current_labels = [l for l in sparse_obj_labels[tidx].sparse_object_labels_batch]
+            print(current_labels)
+            obj_labels.extend(current_labels)
             # valid_batch_indices = valid_batch_indices if len(valid_batch_indices) > 0 else None
             # # Store backbone features that correspond to the available labels.
             # backbone_feature_selector.add_backbone_features(backbone_features=backbone_features,

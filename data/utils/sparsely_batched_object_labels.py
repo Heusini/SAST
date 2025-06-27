@@ -16,7 +16,7 @@ class SparselyBatchedObjectLabels:
         for entry in sparse_object_labels_batch:
             assert isinstance(entry, ObjectLabels) or entry is None
         self.sparse_object_labels_batch = sparse_object_labels_batch
-        self.set_empty_labels_to_none_()
+        # self.set_empty_labels_to_none_()
 
     def __len__(self) -> int:
         return len(self.sparse_object_labels_batch)
