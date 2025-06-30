@@ -50,7 +50,7 @@ class SparselyBatchedObjectLabels:
             if entry is not None:
                 self.sparse_object_labels_batch[idx].zoom_in_and_rescale_(*args, **kwargs)
         # We may have deleted labels. If no labels are left, set the object to None
-        self.set_empty_labels_to_none_()
+        # self.set_empty_labels_to_none_()
 
     def zoom_out_and_rescale_(self, *args, **kwargs):
         for idx, entry in enumerate(self.sparse_object_labels_batch):

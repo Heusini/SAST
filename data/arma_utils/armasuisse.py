@@ -94,8 +94,6 @@ class ArmasuisseDataset(Dataset):
                                                              None)
             labels.append(label.get_object_labels())
 
-        for l in labels:
-            print(l.object_labels.shape)
 
         sparse_labels = SparselyBatchedObjectLabels(labels)
         is_first_sample = True
