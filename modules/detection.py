@@ -264,26 +264,14 @@ class Module(pl.LightningModule):
             backbone_features, states, _ = self.mdl.forward_backbone(x=ev_tensors, previous_states=prev_states)
             prev_states = states
 
-            # if collect_predictions:
-            current_labels, valid_batch_indices = sparse_obj_labels[tidx].get_valid_labels_and_batch_indices()
-            # Store backbone features that correspond to the available labels.
-            valid_batch_indices = valid_batch_indices if len(valid_batch_indices) > 0 else None
-            if (valid_batch_indices is None):
-                print("No valid_batch_indices")
-            # if len(current_labels) > 0:
-            backbone_feature_selector.add_backbone_features(backbone_features=backbone_features,
-                                                            selected_indices=valid_batch_indices)
-
-            ev_repr_selector.add_event_representations(event_representations=ev_tensors,
-                                                           selected_indices=valid_batch_indices)
-            if len(current_labels) > 0:
-                obj_labels.extend(current_labels)
+            current_labels = [l for l in sparse_obj_labels[tidx].sparse_object_labels_batch]
+            obj_labels.extend(current_labels)
+            event_repr.extend(x[0] for x in ev_tensors.split(1))
 
         self.mode_2_rnn_states[mode].save_states_and_detach(worker_id=worker_id, states=prev_states)
         if len(obj_labels) == 0:
             return {ObjDetOutput.SKIP_VIZ: True}
-        selected_backbone_features = backbone_feature_selector.get_batched_backbone_features()
-        predictions, _ = self.mdl.forward_detect(backbone_features=selected_backbone_features)
+        predictions, losses = self.mdl.forward_detect(backbone_features=backbone_features, current_labels)
 
         pred_processed = postprocess(prediction=predictions,
                                      num_classes=self.mdl_config.head.num_classes,
@@ -291,16 +279,18 @@ class Module(pl.LightningModule):
                                      nms_thre=self.mdl_config.postprocess.nms_threshold)
 
         loaded_labels_proph, yolox_preds_proph = to_prophesee(obj_labels, pred_processed)
-        visualize_label = loaded_labels_proph[-1] if len(loaded_labels_proph) > 0  else None
         # For visualization, we only use the last item (per batch).
-        ka = ev_repr_selector.get_event_representations_as_list(start_idx=-1)[0]
         output = {
-            ObjDetOutput.LABELS_PROPH: visualize_label,
+            ObjDetOutput.LABELS_PROPH: loaded_labels_proph[-1],
             ObjDetOutput.PRED_PROPH: yolox_preds_proph[-1],
-            ObjDetOutput.EV_REPR: ka,
+            ObjDetOutput.EV_REPR: event_repr[-1],
             ObjDetOutput.SKIP_VIZ: False,
+            'loss': losses['loss']
         }
 
+        prefix = f'{mode_2_string[mode]}/'
+        log_dict = {f'{prefix}{k}': v for k, v in losses.items()}
+        self.log_dict(log_dict, on_step=True, on_epoch=True, batch_size=batch_size, sync_dist=True)
         if self.started_training:
             self.mode_2_psee_evaluator[mode].add_labels(loaded_labels_proph)
             self.mode_2_psee_evaluator[mode].add_predictions(yolox_preds_proph)
