@@ -190,12 +190,14 @@ class RandomSpatialAugmentorGenX:
         assert (height, width) == self.hw_tuple
         zoom_window_h, zoom_window_w = int(height / rand_zoom_in_factor), int(width / rand_zoom_in_factor)
         latest_objframe = get_most_recent_objframe(data_dict=data_dict, check_if_nonempty=False)
-        if latest_objframe is None:
+
+        if latest_objframe is None or len(latest_objframe) == 0:
             # warn(message=NO_LABEL_WARN_MSG, category=UserWarning, stacklevel=2)
             return data_dict
         x0_sampled, y0_sampled = randomly_sample_zoom_window_from_objframe(
             objframe=latest_objframe, zoom_window_height=zoom_window_h, zoom_window_width=zoom_window_w)
 
+    
         return {k: RandomSpatialAugmentorGenX._zoom_in_and_rescale_recursive(
             v, zoom_coordinates_x0y0=(x0_sampled, y0_sampled), zoom_in_factor=rand_zoom_in_factor, datatype=k) \
             for k, v in data_dict.items()}
@@ -350,6 +352,7 @@ class RandomSpatialAugmentorGenX:
         :param data_dict: LoaderDataDictGenX type, image-based tensors must have (*, h, w) shape.
         :return: map with same keys but spatially augmented values.
         """
+
         if self.automatic_randomization:
             self.randomize_augmentation()
 

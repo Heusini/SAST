@@ -148,6 +148,7 @@ class Module(pl.LightningModule):
         backbone_feature_selector = BackboneFeatureSelector()
         ev_repr_selector = EventReprSelector()
         obj_labels = list()
+        event_repr = list()
         P = 0
         for tidx in range(sequence_len):
             ev_tensors = ev_tensor_sequence[tidx]
@@ -169,28 +170,14 @@ class Module(pl.LightningModule):
             P += sum(p) / sequence_len
             prev_states = states
 
-            for l in sparse_obj_labels[tidx].sparse_object_labels_batch:
-                if l is None:
-                    print("crazy")
             current_labels = [l for l in sparse_obj_labels[tidx].sparse_object_labels_batch]
-            print(current_labels)
             obj_labels.extend(current_labels)
-            # valid_batch_indices = valid_batch_indices if len(valid_batch_indices) > 0 else None
-            # # Store backbone features that correspond to the available labels.
-            # backbone_feature_selector.add_backbone_features(backbone_features=backbone_features,
-            #                                                 selected_indices=valid_batch_indices)
-            # ev_repr_selector.add_event_representations(event_representations=ev_tensors,
-            #                                            selected_indices=valid_batch_indices)
-            # if len(current_labels) > 0:
-            #     obj_labels.extend(current_labels)
+            event_repr.extend(x[0] for x in ev_tensors.split(1))
 
         self.mode_2_rnn_states[mode].save_states_and_detach(worker_id=worker_id, states=prev_states)
-        # assert len(obj_labels) > 0
         # Batch the backbone features and labels to parallelize the detection code.
         # selected_backbone_features = backbone_feature_selector.get_batched_backbone_features()
-        labels_yolox = None
 
-        # if len(obj_labels) > 0:
         labels_yolox = ObjectLabels.get_labels_as_batched_tensor(obj_label_list=obj_labels, format_='yolox')
         labels_yolox = labels_yolox.to(dtype=self.dtype)
 
@@ -210,11 +197,6 @@ class Module(pl.LightningModule):
 
         loaded_labels_proph, yolox_preds_proph = to_prophesee(obj_labels, pred_processed)
 
-        # output_loaded_lables = [] 
-        # if len(loaded_labels_proph) != 0:
-        #     output_loaded_lables = loaded_labels_proph[-batch_size:]
-
-
         assert losses is not None
         assert 'loss' in losses
 
@@ -227,7 +209,7 @@ class Module(pl.LightningModule):
         output = {
             ObjDetOutput.LABELS_PROPH: loaded_labels_proph[-batch_size:],
             ObjDetOutput.PRED_PROPH: yolox_preds_proph[-batch_size:],
-            ObjDetOutput.EV_REPR: ev_repr_selector.get_event_representations_as_list(start_idx=-batch_size),
+            ObjDetOutput.EV_REPR: event_repr[-batch_size:],
             ObjDetOutput.SKIP_VIZ: False,
             'loss': losses['loss']
         }
@@ -320,7 +302,6 @@ class Module(pl.LightningModule):
         }
 
         if self.started_training:
-            print(f"{len(loaded_labels_proph)=}")
             self.mode_2_psee_evaluator[mode].add_labels(loaded_labels_proph)
             self.mode_2_psee_evaluator[mode].add_predictions(yolox_preds_proph)
 

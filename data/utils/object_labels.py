@@ -173,7 +173,7 @@ class ObjectLabels(ObjectLabelBase):
             return None
         # assert num_object_frames > 0
         max_num_labels_per_object_frame = max([len(x) for x in obj_label_list])
-        assert max_num_labels_per_object_frame > 0
+        # assert max_num_labels_per_object_frame > 0
 
         if format_ == 'yolox':
             tensor_labels = []
