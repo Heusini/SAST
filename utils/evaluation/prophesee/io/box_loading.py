@@ -63,11 +63,12 @@ def to_prophesee(loaded_label_list: LOADED_LABELS, yolox_pred_list: YOLOX_PRED_P
     yolox_pred_list_proph = []
     time = 1
     for loaded_labels in loaded_label_list:
+        loaded_labels.numpy_()
         if len(loaded_labels) == 0:
+            loaded_label_list_proph.append(np.zeros(0, dtype=BBOX_DTYPE))
             continue
         # TODO: use loaded_label_to_prophesee func here
         # --- LOADED LABELS ---
-        loaded_labels.numpy_()
         loaded_label_proph = np.zeros((len(loaded_labels),), dtype=BBOX_DTYPE)
         for name in BBOX_DTYPE.names:
             if name == 'track_id':
@@ -75,8 +76,11 @@ def to_prophesee(loaded_label_list: LOADED_LABELS, yolox_pred_list: YOLOX_PRED_P
                 continue
             loaded_label_proph[name] = np.asarray(loaded_labels.get(name), dtype=BBOX_DTYPE[name])
             if name == 't':
-                time = np.unique(loaded_labels.get(name))
-                assert time.size == 1
+                time = np.unique(loaded_labels.get(name))[0]
+                
+                # if time.size > 1:
+                #     time = time[0]
+                # assert time.size == 1, f"{time=}"
                 time = time.item()
         loaded_label_list_proph.append(loaded_label_proph)
 
