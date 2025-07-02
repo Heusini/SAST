@@ -31,19 +31,14 @@ class BackboneFeatureSelector:
         self.features = dict()
 
     def add_backbone_features(self,
-                              backbone_features: BackboneFeatures,
-                              selected_indices: Optional[List[int]] = None) -> None:
-        if selected_indices is not None:
-            assert len(selected_indices) > 0
+                              backbone_features: BackboneFeatures) -> None:
         for k, v in backbone_features.items():
             if k not in self.features:
-                self.features[k] = [v[selected_indices]] if selected_indices is not None else [v]
+                self.features[k] = [v]
             else:
-                self.features[k].append(v[selected_indices] if selected_indices is not None else v)
+                self.features[k].append(v)
 
     def get_batched_backbone_features(self) -> Optional[BackboneFeatures]:
-        if len(self.features) == 0:
-            return None
         return {k: th.cat(v, dim=0) for k, v in self.features.items()}
 
 

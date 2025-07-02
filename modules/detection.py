@@ -173,6 +173,7 @@ class Module(pl.LightningModule):
             current_labels = [l for l in sparse_obj_labels[tidx].sparse_object_labels_batch]
             obj_labels.extend(current_labels)
             event_repr.extend(x[0] for x in ev_tensors.split(1))
+            backbone_feature_selector.add_backbone_features(backbone_features)
 
         self.mode_2_rnn_states[mode].save_states_and_detach(worker_id=worker_id, states=prev_states)
         # Batch the backbone features and labels to parallelize the detection code.
@@ -181,7 +182,8 @@ class Module(pl.LightningModule):
         labels_yolox = ObjectLabels.get_labels_as_batched_tensor(obj_label_list=obj_labels, format_='yolox')
         labels_yolox = labels_yolox.to(dtype=self.dtype)
 
-        predictions, losses = self.mdl.forward_detect(backbone_features=backbone_features,
+        selected_backbone_features = backbone_feature_selector.get_batched_backbone_features()
+        predictions, losses = self.mdl.forward_detect(backbone_features=selected_backbone_features,
                                                       targets=labels_yolox)
 
         if self.mode_2_sampling_mode[mode] in (DatasetSamplingMode.MIXED, DatasetSamplingMode.RANDOM):
@@ -247,9 +249,10 @@ class Module(pl.LightningModule):
             assert self.mode_2_batch_size[mode] == batch_size
 
         prev_states = self.mode_2_rnn_states[mode].get_states(worker_id=worker_id)
-        backbone_feature_selector = BackboneFeatureSelector()
-        ev_repr_selector = EventReprSelector()
         obj_labels = list()
+        event_repr = list()
+
+        backbone_feature_selector = BackboneFeatureSelector()
         for tidx in range(sequence_len):
             collect_predictions = (tidx == sequence_len - 1) or \
                                   (self.mode_2_sampling_mode[mode] == DatasetSamplingMode.STREAM)
@@ -265,13 +268,20 @@ class Module(pl.LightningModule):
             prev_states = states
 
             current_labels = [l for l in sparse_obj_labels[tidx].sparse_object_labels_batch]
+
             obj_labels.extend(current_labels)
             event_repr.extend(x[0] for x in ev_tensors.split(1))
+            backbone_feature_selector.add_backbone_features(backbone_features)
 
         self.mode_2_rnn_states[mode].save_states_and_detach(worker_id=worker_id, states=prev_states)
         if len(obj_labels) == 0:
             return {ObjDetOutput.SKIP_VIZ: True}
-        predictions, losses = self.mdl.forward_detect(backbone_features=backbone_features, current_labels)
+
+        labels_yolox = ObjectLabels.get_labels_as_batched_tensor(obj_label_list=obj_labels, format_='yolox')
+        labels_yolox = labels_yolox.to(dtype=self.dtype)
+
+        selected_backbone_features = backbone_feature_selector.get_batched_backbone_features()
+        predictions, losses = self.mdl.forward_detect(backbone_features=selected_backbone_features, targets=labels_yolox)
 
         pred_processed = postprocess(prediction=predictions,
                                      num_classes=self.mdl_config.head.num_classes,
@@ -279,6 +289,7 @@ class Module(pl.LightningModule):
                                      nms_thre=self.mdl_config.postprocess.nms_threshold)
 
         loaded_labels_proph, yolox_preds_proph = to_prophesee(obj_labels, pred_processed)
+        # print(loaded_labels_proph)
         # For visualization, we only use the last item (per batch).
         output = {
             ObjDetOutput.LABELS_PROPH: loaded_labels_proph[-1],
@@ -289,8 +300,21 @@ class Module(pl.LightningModule):
         }
 
         prefix = f'{mode_2_string[mode]}/'
-        log_dict = {f'{prefix}{k}': v for k, v in losses.items()}
-        self.log_dict(log_dict, on_step=True, on_epoch=True, batch_size=batch_size, sync_dist=True)
+        log_dict = {}
+        for k, v in losses.items():
+            if isinstance(v, (int, float)):
+                value = torch.tensor(v)
+            elif isinstance(v, np.ndarray):
+                value = torch.from_numpy(v)
+            elif isinstance(v, torch.Tensor):
+                value = v
+            else:
+                raise NotImplementedError
+            assert value.ndim == 0, f'tensor must be a scalar.\n{v=}\n{type(v)=}\n{value=}\n{type(value)=}'
+            # put them on the current device to avoid this error: https://github.com/Lightning-AI/lightning/discussions/2529
+            log_dict[f'{prefix}{k}'] = value.to(self.device)
+        # Somehow self.log does not work when we eval during the training epoch.
+        self.log_dict(log_dict, on_step=False, on_epoch=True, batch_size=batch_size, sync_dist=True)
         if self.started_training:
             self.mode_2_psee_evaluator[mode].add_labels(loaded_labels_proph)
             self.mode_2_psee_evaluator[mode].add_predictions(yolox_preds_proph)
