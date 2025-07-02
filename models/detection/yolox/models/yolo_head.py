@@ -165,7 +165,7 @@ class YOLOXHead(nn.Module):
             b.data.fill_(-math.log((1 - prior_prob) / prior_prob))
             conv.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
 
-    def forward(self, xin, labels=None):
+    def forward(self, xin, labels=None, return_loss=True):
         train_outputs = []
         inference_outputs = []
         origin_preds = []
@@ -187,7 +187,7 @@ class YOLOXHead(nn.Module):
             reg_output = self.reg_preds[k](reg_feat)
             obj_output = self.obj_preds[k](reg_feat)
 
-            if self.training:
+            if self.training or return_loss:
                 output = torch.cat([reg_output, obj_output, cls_output], 1)
                 output, grid = self.get_output_and_grid(
                     output, k, stride_this_level, xin[0].type()
@@ -219,7 +219,7 @@ class YOLOXHead(nn.Module):
         # Modification: return decoded output also during training
         # --------------------------------------------------------
         losses = None
-        if self.training:
+        if self.training or return_loss:
             losses =  self.get_losses(
                 x_shifts,
                 y_shifts,
