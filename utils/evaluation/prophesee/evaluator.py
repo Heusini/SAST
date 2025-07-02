@@ -30,7 +30,7 @@ class PropheseeEvaluator:
     def _add_to_buffer(self, key: str, value: List[np.ndarray]):
         assert isinstance(value, list)
         for entry in value:
-            assert isinstance(entry, np.ndarray)
+            assert isinstance(entry, np.ndarray), f"{entry=}"
         self._buffer_empty = False
         assert self._buffer is not None
         self._buffer[key].extend(value)
