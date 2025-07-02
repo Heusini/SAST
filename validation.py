@@ -97,5 +97,5 @@ def main(config: DictConfig):
 
 if __name__ == '__main__':
     # torch.multiprocessing.set_start_method('spawn')
-    torch.cuda.set_per_process_memory_fraction(0.18, device=1)
+    # torch.cuda.set_per_process_memory_fraction(0.18, device=1)
     main()
