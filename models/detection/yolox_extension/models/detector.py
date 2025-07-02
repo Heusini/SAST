@@ -47,15 +47,16 @@ class YoloXDetector(th.nn.Module):
         device = next(iter(backbone_features.values())).device
         with CudaTimer(device=device, timer_name="FPN"):
             fpn_features = self.fpn(backbone_features)
-        if self.training:
-            # assert targets is not None
-            with CudaTimer(device=device, timer_name="HEAD + Loss"):
-                outputs, losses = self.yolox_head(fpn_features, targets)
-            return outputs, losses
-        with CudaTimer(device=device, timer_name="HEAD"):
-            outputs, losses = self.yolox_head(fpn_features)
-        assert losses is None
+        # if self.training:
+        # assert targets is not None
+        with CudaTimer(device=device, timer_name="HEAD + Loss"):
+            outputs, losses = self.yolox_head(fpn_features, targets)
         return outputs, losses
+
+        # with CudaTimer(device=device, timer_name="HEAD"):
+        #     outputs, losses = self.yolox_head(fpn_features)
+        # assert losses is None
+        # return outputs, losses
 
     def forward(self,
                 x: th.Tensor,
