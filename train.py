@@ -157,7 +157,7 @@ def main(config: DictConfig):
         callbacks.append(viz_callback)
     callbacks.append(ModelSummary(max_depth=2))
 
-    logger.watch(model=module, log='all', log_freq=config.logging.train.log_model_every_n_steps, log_graph=True)
+    # logger.watch(model=module, log='all', log_freq=config.logging.train.log_model_every_n_steps, log_graph=True)
 
     # ---------------------
     # Training
@@ -197,5 +197,5 @@ def main(config: DictConfig):
 
 
 if __name__ == '__main__':
-    os.environ["WANDB_MODE"] = "disabled"
+    # os.environ["WANDB_MODE"] = "disabled"
     main()
