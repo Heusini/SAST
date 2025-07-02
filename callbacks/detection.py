@@ -58,8 +58,8 @@ class DetectionVizCallback(VizCallbackBase):
             draw_bboxes(prediction_img, predictions_proph, labelmap=self.label_map)
 
             label_img = ev_img.copy()
-            if sample_idx < len(outputs[ObjDetOutput.LABELS_PROPH]):
-                labels_proph = outputs[ObjDetOutput.LABELS_PROPH][sample_idx]
+            labels_proph = outputs[ObjDetOutput.LABELS_PROPH][sample_idx]
+            if len(labels_proph) > 0:
                 draw_bboxes(label_img, labels_proph, labelmap=self.label_map)
 
             merged_img.append(rearrange([prediction_img, label_img], 'pl H W C -> (pl H) W C', pl=2, C=3))
