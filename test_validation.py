@@ -40,6 +40,7 @@ from utils.timers import print_timing_info
 import matplotlib.pyplot as plt
 
 def extract_bounding_boxes(labels: np.ndarray) -> np.ndarray:                 
+    # print(f"{labels=}")
     stacked = np.column_stack([labels[field] for field in labels.dtype.names])
     new_bbs = stacked[:, 1:5]                                                 
     if new_bbs.ndim == 1:                                                     
@@ -57,7 +58,7 @@ class Visualizer:
 
     def add_gt_boxes(self, boxes):
         self.gt_boxes.extend(boxes.astype(np.int32).tolist())
-        print(self.gt_boxes)
+        # print(self.gt_boxes)
 
     def add_dt_boxes(self, boxes):
         self.dt_boxes.extend(boxes.astype(np.int32).tolist())
@@ -125,23 +126,26 @@ def main(config: DictConfig):
     # No gradient computation needed during inference
     count = 0
     skip = 50
+    samples = 0
     gpu = torch.device(f"cuda:{gpus[0]}")
     for batch in val_loader:
-        if count >= skip:
+        if count > skip:
             with CudaTimer(gpu, "Total"):
                 output = module._val_test_step_impl(batch, Mode.VAL)
             visualizer = Visualizer(output[ObjDetOutput.EV_REPR].numpy())
+            # print(output[ObjDetOutput.LABELS_PROPH]['t'])
+
             gt_boxes = extract_bounding_boxes(output[ObjDetOutput.LABELS_PROPH])
             dt_boxes = extract_bounding_boxes(output[ObjDetOutput.PRED_PROPH])
             visualizer.add_gt_boxes(gt_boxes)
             visualizer.add_dt_boxes(dt_boxes)
             img = visualizer.draw()
             cv2.imshow("window", img)
-            if cv2.waitKey(100) == ord("q"):
+            if cv2.waitKey(1000) == ord("q"):
                 cv2.destroyAllWindows()
                 sys.exit(0)
 
-        if count > skip+5:
+        if count > skip+samples:
             break
         count += 1
     module.run_psee_evaluator(Mode.VAL)
