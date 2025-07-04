@@ -18,8 +18,8 @@ training:
     div_factor: 20
     final_div_factor: 10000
 validation:
-  val_check_interval: 5000
-  check_val_every_n_epoch: null
+  val_check_interval: null
+  check_val_every_n_epoch: 1
 batch_size:
   train: 12
   eval: 12
