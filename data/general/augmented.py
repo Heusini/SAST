@@ -17,46 +17,32 @@ from data.arma_utils.labels import ObjectLabelFactory
 from data.utils.sparsely_batched_object_labels import SparselyBatchedObjectLabels
 from data.arma_utils.armasuisse import ArmasuisseDataset
 
-class ArmasuisseAugmented(Dataset):
+class AugmentedDataset(Dataset):
     def __init__(
             self,
-            path: Path,
-            sequence_length: int,
+            original_dataset: Dataset,
             resolution_hw: Tuple[int, int],
             augmentation_config,
             ):
-        self.armasuisse_dataset = ArmasuisseDataset(path, sequence_length, resolution_hw)
+        self.dataset = original_dataset
         self.spatial_augmentor = RandomSpatialAugmentorGenX(
             dataset_hw=resolution_hw,
             automatic_randomization=True,
             augm_config=augmentation_config.random)
 
     def __getitem__(self, index: int):
-        item = self.armasuisse_dataset[index]
+        item = self.dataset[index]
         return self.spatial_augmentor(item)
     
     def __len__(self) -> int:
-        return len(self.armasuisse_dataset)
+        return len(self.dataset)
 
     @staticmethod
-    def build(dataset_mode: DatasetMode, dataset_config: DictConfig):
-        path = Path(dataset_config.path)
-        assert path.exists(), f"provided Armasuisse path {path} does not exist"
-        PATHS = {
-            "train": path / "train",
-            "val": path / "val"
-        }
-        mode2str = {DatasetMode.TRAIN: 'train',
-                    DatasetMode.VALIDATION: 'val',
-                    DatasetMode.TESTING: 'test'}
-
-        data_folder = PATHS[mode2str[dataset_mode]]
-        assert data_folder.is_dir(), f"Train folder ({data_folder}) doesn't exist maybe structure is wrong of the preprocessed data"
-        dataset = ArmasuisseAugmented(
-            data_folder,
-            dataset_config.sequence_length,
+    def build(dataset_config: DictConfig, dataset: Dataset):
+        augmented_dataset = AugmentedDataset(
+            dataset,
             tuple(dataset_config.resolution_hw),
             dataset_config.data_augmentation,
         )
-        return dataset
+        return augmented_dataset
 
