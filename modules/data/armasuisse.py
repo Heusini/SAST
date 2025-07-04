@@ -8,7 +8,8 @@ from data.utils.types import DatasetMode, DatasetSamplingMode
 from data.utils.collate import custom_collate_rnd, custom_collate_streaming
 from tqdm import tqdm
 
-from data.arma_utils.armasuisse_augmented import ArmasuisseAugmented
+from data.general.augmented import AugmentedDataset
+from data.general.partial_dataset import PartialDataset
 from data.arma_utils.armasuisse import ArmasuisseDataset
 
 
@@ -62,13 +63,19 @@ class ArmaDataModule(pl.LightningDataModule):
     def setup(self, stage: Optional[str] = None) -> None:
         if stage == 'fit':
             if self.train_sampling_mode in (DatasetSamplingMode.RANDOM, DatasetSamplingMode.MIXED):
+                armasuisse_dataset = ArmasuisseDataset.build(dataset_mode=DatasetMode.TRAIN, 
+                                                              dataset_config=self.dataset_config)
+                partial_dataset = PartialDataset(armasuisse_dataset, 0.2)
+
                 self.sampling_mode_2_dataset[DatasetSamplingMode.RANDOM] = \
-                    ArmasuisseAugmented.build(dataset_mode=DatasetMode.TRAIN, dataset_config=self.dataset_config)
-
-
-            self.validation_dataset = ArmasuisseDataset.build(dataset_mode=DatasetMode.VALIDATION, 
+                    AugmentedDataset.build(dataset_config=self.dataset_config, dataset=partial_dataset)
+            
+            validation_dataset = ArmasuisseDataset.build(dataset_mode=DatasetMode.VALIDATION, 
                                                               dataset_config=self.dataset_config)
 
+
+            partial_val_dataset = PartialDataset(validation_dataset, 0.2) 
+            self.validation_dataset = partial_val_dataset
             # stream not implemented yet
             # if self.train_sampling_mode in (DatasetSamplingMode.STREAM, DatasetSamplingMode.MIXED):
             #     self.sampling_mode_2_dataset[DatasetSamplingMode.STREAM] = \
