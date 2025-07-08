@@ -115,12 +115,6 @@ class Module(pl.LightningModule):
         output = [output[i] for i in [1, 2, 3, 4]]
         return output
 
-    def forward_shit(self, event_tensor: th.Tensor):
-        backbone_features, _, _ = self.mdl.forward_backbone(event_tensor)
-        fpn_features = self.mdl.fpn(backbone_features)
-        return fpn_features
-
-    
     def get_worker_id_from_batch(self, batch: Any) -> int:
         return batch['worker_id']
 
