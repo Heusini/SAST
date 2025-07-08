@@ -29,6 +29,7 @@ class DatasetType(Enum):
     GEN1 = auto()
     GEN4 = auto()
     ARMA = auto()
+    ERGB = auto()
 
 
 class DatasetMode(Enum):

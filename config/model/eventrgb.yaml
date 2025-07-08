@@ -1,0 +1,10 @@
+defaults:
+  - base
+
+name: eventrgb
+backbone:
+  name: ???
+fpn:
+  name: ???
+head:
+  name: ???

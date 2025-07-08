@@ -28,6 +28,8 @@ class DetectionVizCallback(VizCallbackBase):
             self.label_map = LABELMAP_GEN4_SHORT
         elif dataset_name == 'arma':
             self.label_map = LABELMAP_GEN4_SHORT
+        elif dataset_name == 'eventrgb':
+            self.label_map = LABELMAP_GEN4_SHORT
         else:
             raise NotImplementedError
 
@@ -81,6 +83,7 @@ class DetectionVizCallback(VizCallbackBase):
         predictions_proph = outputs[ObjDetOutput.PRED_PROPH]
         prediction_img = ev_img.copy()
         if len(predictions_proph) > 0:
+            print(f"{predictions_proph=}")
             draw_bboxes(prediction_img, predictions_proph, labelmap=self.label_map)
         self.add_to_buffer(DetectionVizEnum.PRED_IMG_PROPH, prediction_img)
 

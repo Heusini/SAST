@@ -9,7 +9,7 @@ def get_ckpt_callback(config: DictConfig) -> ModelCheckpoint:
     model_name = config.model.name
 
     prefix = 'val'
-    if model_name == 'rnndet':
+    if model_name == 'rnndet' or model_name == 'eventrgb':
         metric = 'AP (all)'
         mode = 'max'
     else:
@@ -34,6 +34,6 @@ def get_ckpt_callback(config: DictConfig) -> ModelCheckpoint:
 def get_viz_callback(config: DictConfig) -> Callback:
     model_name = config.model.name
 
-    if model_name == 'rnndet':
+    if model_name == 'rnndet' or model_name == 'eventrgb':
         return DetectionVizCallback(config=config)
     raise NotImplementedError
