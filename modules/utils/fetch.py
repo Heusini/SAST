@@ -3,7 +3,9 @@ from omegaconf import DictConfig
 
 from modules.data.genx import DataModule as genx_data_module
 from modules.data.armasuisse import ArmaDataModule as genarma_data_module
+from modules.data.event_rgb import EventRGBDataModule as gen_event_rgb_module
 from modules.detection import Module as rnn_det_module
+from modules.event_rgb_detection import EventRGBModule
 from models.detection.recurrent_backbone.sast_rnn import RNNDetector
 
 
@@ -11,6 +13,8 @@ def fetch_model_module(config: DictConfig) -> pl.LightningModule:
     model_str = config.model.name
     if model_str == 'rnndet':
         return rnn_det_module(config)
+    if model_str == 'eventrgb':
+        return EventRGBModule(config)
     raise NotImplementedError
 
 
@@ -29,6 +33,12 @@ def fetch_data_module(config: DictConfig) -> pl.LightningDataModule:
                                 batch_size_eval=batch_size_eval)
     if dataset_str in {'arma'}:
         return genarma_data_module(config.dataset,
+                                num_workers_train=num_workers_train,
+                                num_workers_eval=num_workers_eval,
+                                batch_size_train=batch_size_train,
+                                batch_size_eval=batch_size_eval)
+    if dataset_str in {'eventrgb'}:
+        return gen_event_rgb_module(config.dataset,
                                 num_workers_train=num_workers_train,
                                 num_workers_eval=num_workers_eval,
                                 batch_size_train=batch_size_train,
