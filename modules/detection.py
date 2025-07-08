@@ -111,12 +111,6 @@ class Module(pl.LightningModule):
         output = [output[i] for i in [1, 2, 3, 4]]
         return output
 
-    def forward_shit(self, event_tensor: th.Tensor):
-        backbone_features, _, _ = self.mdl.forward_backbone(event_tensor)
-        fpn_features = self.mdl.fpn(backbone_features)
-        return fpn_features
-
-    
     def get_worker_id_from_batch(self, batch: Any) -> int:
         return batch['worker_id']
 
@@ -291,7 +285,6 @@ class Module(pl.LightningModule):
                                      nms_thre=self.mdl_config.postprocess.nms_threshold)
 
         loaded_labels_proph, yolox_preds_proph = to_prophesee(obj_labels, pred_processed)
-        # print(loaded_labels_proph)
         # For visualization, we only use the last item (per batch).
         output = {
             ObjDetOutput.LABELS_PROPH: loaded_labels_proph[-1],
@@ -323,10 +316,8 @@ class Module(pl.LightningModule):
         assert batch_size is not None
         assert hw_tuple is not None
         if psee_evaluator.has_data():
-            # print("has_data")
             metrics = psee_evaluator.evaluate_buffer(img_height=hw_tuple[0],
                                                      img_width=hw_tuple[1])
-            # print(f"{metrics=}")
             assert metrics is not None
 
             prefix = f'{mode_2_string[mode]}/'
