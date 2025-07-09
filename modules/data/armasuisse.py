@@ -61,11 +61,12 @@ class ArmaDataModule(pl.LightningDataModule):
         
 
     def setup(self, stage: Optional[str] = None) -> None:
+        percent_dataset = 1
         if stage == 'fit':
             if self.train_sampling_mode in (DatasetSamplingMode.RANDOM, DatasetSamplingMode.MIXED):
                 armasuisse_dataset = ArmasuisseDataset.build(dataset_mode=DatasetMode.TRAIN, 
                                                               dataset_config=self.dataset_config)
-                partial_dataset = PartialDataset(armasuisse_dataset, 0.2)
+                partial_dataset = PartialDataset(armasuisse_dataset, percent_dataset)
 
                 self.sampling_mode_2_dataset[DatasetSamplingMode.RANDOM] = \
                     AugmentedDataset.build(dataset_config=self.dataset_config, dataset=partial_dataset)
@@ -74,7 +75,7 @@ class ArmaDataModule(pl.LightningDataModule):
                                                               dataset_config=self.dataset_config)
 
 
-            partial_val_dataset = PartialDataset(validation_dataset, 0.2) 
+            partial_val_dataset = PartialDataset(validation_dataset, percent_dataset) 
             self.validation_dataset = partial_val_dataset
             # stream not implemented yet
             # if self.train_sampling_mode in (DatasetSamplingMode.STREAM, DatasetSamplingMode.MIXED):
