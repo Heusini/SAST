@@ -136,10 +136,19 @@ def main(config: DictConfig):
         backbone_dict = {k.replace("mdl.", ""): v 
                      for k, v in state_dict.items() if k.startswith("mdl.backbone.")}
 
+        fpn_dict = {k.replace("mdl.", ""): v 
+                     for k, v in state_dict.items() if k.startswith("mdl.fpn.")}
+
         module.mdl.backbone.load_state_dict(backbone_dict, strict=False)
+        module.mdl.fpn.load_state_dict(fpn_dict, strict=False)
         for param in module.mdl.backbone.parameters():
             param.requires_grad = False
+
+        for param in module.mdl.fpn.parameters():
+            param.requires_grad = False
+
         module.mdl.backbone.eval()
+        module.mdl.fpn.eval()
         ckpt_path = None
 
     # ---------------------
