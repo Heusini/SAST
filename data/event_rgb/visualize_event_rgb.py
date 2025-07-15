@@ -43,7 +43,7 @@ def draw_and_display(event_data: np.ndarray,
     event = event / np.max(event)
     event = event * 255
     event = np.array(event, np.uint8)
-    event = cv2.applyColorMap(event, cv2.COLORMAP_VIRIDIS)
+    event = cv2.applyColorMap(event, cv2.COLORMAP_JET)
     if new_bb is not None and len(new_bb) > 0:
         event = bbv.draw_multiple_rectangles(event, new_bb.tolist(), thickness=1)
         rgb = bbv.draw_multiple_rectangles(rgb, new_bb.tolist(), thickness=1)
@@ -65,7 +65,7 @@ def main(config: DictConfig):
     event_dataset = EventRGBDataset.build(DatasetMode.TRAIN, config.dataset)
     partial = PartialDataset(event_dataset, 0.2, True)
     augmented = AugmentedDataset.build(config.dataset, partial)
-    for data in augmented:
+    for data in event_dataset:
         sequence_len = len(data[DataType.IMAGE])
         for i in range(sequence_len):
             bboxes = extract_bounding_boxes(data[DataType.OBJLABELS_SEQ][i].object_labels.numpy()).astype(np.int32)
