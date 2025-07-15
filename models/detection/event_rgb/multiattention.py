@@ -24,6 +24,20 @@ class SimpleRGBEncoder(nn.Module):
     def forward(self, x):
         return self.rgb_encoder(x)  # [B, 256, H/8, W/8]
 
+class Reduce(nn.Module):
+    def __init__(self, in_channel, out_channel, patch_size):
+        super().__init__()
+        # self.conv1 = nn.Conv2d(in_channel, out_channel, kernel_size=patch_size, stride=patch_size)
+        groups = 32
+        self.proj = nn.Sequential(
+            nn.Conv2d(in_channel, out_channel, patch_size, patch_size, bias=False),
+            nn.GroupNorm(groups, out_channel),     # groups should divide embed_dim
+            nn.GELU(),
+        )
+
+    def forward(self, input):
+        return self.proj(input)
+
 class FPN(nn.Module):
     def __init__(self, in_channel, out_channels = (64, 128, 256)):
         super().__init__()

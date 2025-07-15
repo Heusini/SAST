@@ -14,7 +14,7 @@ from ..yolox_extension.models.build import build_yolox_fpn, build_yolox_head
 from utils.timers import TimerDummy as CudaTimer
 
 from data.utils.types import BackboneFeatures, LstmStates
-from .multiattention import CrossAttention, SimpleRGBEncoder, MLP, FPN
+from .multiattention import CrossAttention, SimpleRGBEncoder, MLP, FPN, Reduce
 
 
 class EventRGBDetector(th.nn.Module):
@@ -32,9 +32,13 @@ class EventRGBDetector(th.nn.Module):
 
         in_channels = self.backbone.get_stage_dims(fpn_cfg.in_stages)
         self.fpn = build_yolox_fpn(fpn_cfg, in_channels=in_channels)
-        self.rgb_fpn = FPN(3)
+        # self.rgb_fpn = FPN(3)
+        self.reduce = Reduce(3, 96, 4)
         strides = self.backbone.get_strides(fpn_cfg.in_stages)
-        in_channels = (128, 256, 512)
+        in_channels = [96] + [*in_channels]
+        strides =  [4] + [*strides]
+        print(f"{in_channels=}")
+        print(f"{strides=}")
         self.yolox_head = build_yolox_head(head_cfg, in_channels=in_channels, strides=strides)
 
     def forward_backbone(self,
@@ -80,18 +84,21 @@ class EventRGBDetector(th.nn.Module):
         # assert targets is not None
         # for k in range(len(stages)):
         #     print(f"{fpn_features[k].shape=}")
-
-        rgb_features = self.rgb_fpn(rgb_image)
         # for k in range(len(rgb_features)):
         #     print(f"{rgb_features[k].shape=}")
 
-        fused_feats = [th.cat([a, b], dim=1) for a, b in zip(fpn_features, rgb_features)]
+        # fused_feats = [th.cat([a, b], dim=1) for a, b in zip(fpn_features, rgb_image)]
+        reduced_image = self.reduce(rgb_image)
+        fpn_features.insert(0, reduced_image)
+        # for k in range(len(fpn_features)):
+        #     print(f"{fpn_features[k].shape=}")
+
         # for k in range(len(fused_feats)):
         #     print(f"{fused_feats[k].shape=}")
 
 
         with CudaTimer(device=device, timer_name="HEAD + Loss"):
-            outputs, losses = self.yolox_head(fused_feats, targets)
+            outputs, losses = self.yolox_head(fpn_features, targets)
         return outputs, losses
 
         # with CudaTimer(device=device, timer_name="HEAD"):
