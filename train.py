@@ -59,6 +59,17 @@ class MyProgressBar(TQDMProgressBar):
         if not sys.stdout.isatty():
             bar.disable = True
         return bar
+
+
+def print_layer_sizes(model):
+    print(f"{'Layer':50} {'Param #':>10} {'Shape'}")
+    print("-" * 80)
+    yolox_head_count = 0
+    for name, param in model.named_parameters():
+        if param.requires_grad and name.startswith("mdl.yolox_head"):
+            print(f"{name:50} {param.numel():>10} {list(param.shape)}")
+            yolox_head_count += param.numel()
+    print(f"{yolox_head_count=}")
     
 @hydra.main(config_path='config', config_name='train', version_base='1.2')
 def main(config: DictConfig):
@@ -151,6 +162,11 @@ def main(config: DictConfig):
         # module.mdl.fpn.eval()
         ckpt_path = None
 
+    
+    # print_layer_sizes(module)
+    # summary(module, input_size=(4, 20, 384, 640))
+    # sys.exit(0)
+
     # ---------------------
     # Callbacks and Misc
     # ---------------------
@@ -206,5 +222,5 @@ def main(config: DictConfig):
 
 
 if __name__ == '__main__':
-    # os.environ["WANDB_MODE"] = "disabled"
+    os.environ["WANDB_MODE"] = "disabled"
     main()
