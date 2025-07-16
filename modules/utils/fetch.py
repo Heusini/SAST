@@ -6,6 +6,7 @@ from modules.data.armasuisse import ArmaDataModule as genarma_data_module
 from modules.data.event_rgb import EventRGBDataModule as gen_event_rgb_module
 from modules.detection import Module as rnn_det_module
 from modules.event_rgb_detection import EventRGBModule
+from modules.lwdeter import LWDETERModule
 from models.detection.recurrent_backbone.sast_rnn import RNNDetector
 
 
@@ -15,6 +16,8 @@ def fetch_model_module(config: DictConfig) -> pl.LightningModule:
         return rnn_det_module(config)
     if model_str == 'eventrgb':
         return EventRGBModule(config)
+    if model_str == 'lwdeter':
+        return LWDETERModule(config)
     raise NotImplementedError
 
 
