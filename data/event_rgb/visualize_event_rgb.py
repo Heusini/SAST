@@ -71,6 +71,8 @@ def main(config: DictConfig):
             bboxes = extract_bounding_boxes(data[DataType.OBJLABELS_SEQ][i].object_labels.numpy()).astype(np.int32)
             events = data[DataType.EV_REPR][i].numpy()
             rgbs = data[DataType.IMAGE][i]
+            print(f"{events.shape=}")
+            print(f"{rgbs.shape=}")
             rgbs = rgbs.permute(1, -1, 0).numpy()
             draw_and_wait(events, rgbs, bboxes)
 

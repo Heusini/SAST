@@ -77,9 +77,13 @@ class EventRGBDetector(th.nn.Module):
         # print(f"{new_features[1].shape=}")
         # print(f"{new_features[2].shape=}")
         # print(f"{new_features[3].shape=}")
+        print(f"{len(backbone_features)=}")
+        print(f"{rgb_image.shape=}")
 
         with CudaTimer(device=device, timer_name="FPN"):
             fpn_features = self.fpn(backbone_features)
+
+        print(f"{len(fpn_features)=}")
         # if self.training:
         # assert targets is not None
         # for k in range(len(stages)):
