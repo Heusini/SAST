@@ -146,6 +146,9 @@ def main(config: DictConfig):
 
         backbone_dict = {k.replace("mdl.", ""): v 
                      for k, v in state_dict.items() if k.startswith("mdl.backbone.")}
+        fpn_dict = {k.replace("mdl.", ""): v 
+                     for k, v in state_dict.items() if k.startswith("mdl.fpn.")}
+
 
         fpn_dict = {k.replace("mdl.", ""): v 
                      for k, v in state_dict.items() if k.startswith("mdl.fpn.")}
@@ -222,5 +225,5 @@ def main(config: DictConfig):
 
 
 if __name__ == '__main__':
-    os.environ["WANDB_MODE"] = "disabled"
+    # os.environ["WANDB_MODE"] = "disabled"
     main()
