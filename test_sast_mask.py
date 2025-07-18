@@ -10,6 +10,7 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1"
 from pathlib import Path
 
 import torch
+import torch as th
 import torch.nn as nn
 from torch.backends import cuda, cudnn
 
@@ -104,6 +105,12 @@ def draw_and_display(img_data, masks, bboxes,image = None,predictions =None, win
             y = y_i * size
             img[y:y+size, x:x+size] = cv2.addWeighted(mask_color, alpha, img[y:y+size, x:x+size], 1-alpha, 0)
 
+    if bboxes is not None:
+        new_bb = bboxes.copy()
+        new_bb[:, 2:] += new_bb[:, :2]
+        new_bb = new_bb.astype(np.int32)
+        img = bbv.draw_multiple_rectangles(img, new_bb.tolist(), thickness=1)
+
     y_repeat = int(np.ceil(HEIGHT/ height))
     x_repeat = int(np.ceil(WIDTH / width))
 
@@ -149,6 +156,24 @@ def map_tokens_to_image(frame, tokens, bboxes, image=None, predictions=None):
         cv2.destroyAllWindows()
         sys.exit(0)
     # draw_plot(frame, masks)
+def get_sparsity_mask(fpn_layer: th.Tensor, threshold = 0.7):
+    tokens = torch.norm(fpn_layer, dim=1)
+
+    max_pool = nn.MaxPool2d(2,2)
+    min_val = tokens.amin(dim=(-2, -1), keepdim=True)
+    max_val = tokens.amax(dim=(-2, -1), keepdim=True)
+    tokens = (tokens - min_val) / (max_val-min_val + 1e-8)
+    # tokens = max_pool(tokens)
+    # print(f"{tokens.shape=}")
+
+    mask = tokens < threshold
+    # print(f"{mask=}")
+
+    data = torch.ones((mask.shape))
+    # print(f"{data}")
+    data.masked_fill_(mask, float(0))
+    # print(f"{data}")
+    return tokens
 
 @hydra.main(config_path='config', config_name='val', version_base='1.2')
 def main(config: DictConfig):
