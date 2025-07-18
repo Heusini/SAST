@@ -330,10 +330,8 @@ class EventRGBModule(pl.LightningModule):
         assert batch_size is not None
         assert hw_tuple is not None
         if psee_evaluator.has_data():
-            print("has_data")
             metrics = psee_evaluator.evaluate_buffer(img_height=hw_tuple[0],
                                                      img_width=hw_tuple[1])
-            print(f"{metrics=}")
             assert metrics is not None
 
             prefix = f'{mode_2_string[mode]}/'

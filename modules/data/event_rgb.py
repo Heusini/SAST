@@ -85,7 +85,6 @@ class EventRGBDataModule(pl.LightningDataModule):
                                                       dataset_config=self.dataset_config)
             partial_dataset = PartialDataset(event_rgb_dataset, use_percent_dataset)
             self.validation_dataset = partial_dataset
-            print(f"{len(self.validation_dataset)=}")
         elif stage == 'test':
             print("test")
             raise NotImplementedError
