@@ -81,7 +81,7 @@ head:
 
   pretrained_encoder: null
   # Finetune armasuisse checkpoint
-  pretrain_weights: '/home/sheusinger/src/pth/LWDETR_tiny.pth'
+  pretrain_weights: '/home/sheusinger/repos/SAST/LWDETR_tiny.pth'
   pretrain_exclude_keys: ['transformer.enc_out_class_embed', 'class_embed', 'backbone.0.encoder.patch_embed.proj.weight']
   pretrain_keys_modify_to_load: null
   encoder: 'vit_tiny'
@@ -125,10 +125,6 @@ head:
   # dataset_file: "armasuisse_split"
   dataset_file: "armasuisse"
   in_channels: 20
-  coco_path: ''
-  armasuisse_path: "/detr_st_stephan/"
-  armasuisse_path_org: "/org_size_st_stephan/"
-  prophesee_path: "/detr_1mpx/"
   square_resize_div_64: true
 
   output_dir: 'output/no_missing'
@@ -158,4 +154,7 @@ head:
   simplify: true
   tensorrt: true
   dry_run: false
+postprocess:
+  confidence_threshold: 0.01
+  nms_threshold: 0.45
 

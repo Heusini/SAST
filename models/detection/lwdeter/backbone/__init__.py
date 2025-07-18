@@ -16,8 +16,6 @@ class Joiner(nn.Sequential):
     def forward(self, tensor_list: NestedTensor, sparsity_mask=None):
         """
         """
-        print(f"{tensor_list.tensors.shape=}")
-        print(f"{sparsity_mask.shape=}")
         x = self[0](tensor_list, sparsity_mask)
         pos = []
         for x_ in x:

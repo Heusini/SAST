@@ -20,6 +20,7 @@ from utils.evaluation.prophesee.io.box_loading import to_prophesee
 from utils.padding import InputPadderFromShape
 from .utils.detection import BackboneFeatureSelector, EventReprSelector, RNNStates, Mode, mode_2_string, \
     merge_mixed_batches
+from util.scheduler import CosineLRScheduler
 
 from utils.timers import CudaTimer
 
@@ -142,7 +143,8 @@ class LWDETERModule(pl.LightningModule):
         step = self.trainer.global_step
         ev_tensor_sequence = data[DataType.EV_REPR]
         sparse_obj_labels = data[DataType.OBJLABELS_SEQ]
-        image_sequence = data[DataType.IMAGE]
+        # image_sequence = data[DataType.IMAGE]
+        image_sequence = None
         is_first_sample = data[DataType.IS_FIRST_SAMPLE]
         token_mask_sequence = data.get(DataType.TOKEN_MASK, None)
 
@@ -190,45 +192,65 @@ class LWDETERModule(pl.LightningModule):
         # Batch the backbone features and labels to parallelize the detection code.
         # selected_backbone_features = backbone_feature_selector.get_batched_backbone_features()
 
-        labels_yolox = ObjectLabels.get_labels_as_batched_tensor(obj_label_list=obj_labels, format_='yolox')
-        labels_yolox = labels_yolox.to(dtype=self.dtype)
+        # for o in obj_labels:
+        #     print(f"{o.object_labels.dtype=}")
+        # print(f"{ev_tensor_sequence[0].dtype=}")
+        # sys.exit(0)
+        labels_lwdetr = ObjectLabels.get_labels_as_batched_tensor(obj_label_list=obj_labels, format_='lwdetr')
 
         selected_backbone_features = backbone_feature_selector.get_batched_backbone_features()
 
-        image_sequence = th.cat(image_sequence, dim=0)
-        image_sequence = self.input_padder.pad_tensor_ev_repr(image_sequence)
+        # image_sequence = th.cat(image_sequence, dim=0)
+        # image_sequence = self.input_padder.pad_tensor_ev_repr(image_sequence)
 
         fpn_features = self.mdl.forward_fpn(backbone_features=selected_backbone_features)
-        for k in fpn_features:
-            print(f"{k.shape=}")
 
         sparsity_mask = self.get_sparsity_mask(fpn_features[0], 0.2)
 
         max = np.max((sparsity_mask.shape[-1], sparsity_mask.shape[-2]))
         sparsity_mask, pad = InputPadderFromShape._pad_tensor_impl(sparsity_mask, (max, max), mode='constant', value=1)
         sparsity_mask = sparsity_mask.flatten(1,2)
-        print(f"{sparsity_mask.shape=}")
-        # print(f"{sparsity_mask=}")
-        prediction, losses = self.mdl.forward_detect(ev_tensor_sequence, image_sequence, sparsity_mask, labels_yolox)
 
+        predictions, loss_dict = self.mdl.forward_detect(ev_tensor_sequence, image_sequence, sparsity_mask, labels_lwdetr)
+        weight_dict = self.mdl.criterion.weight_dict
+        losses = sum(
+            loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict
+        )
+        # loss_dict_reduced = utils.reduce_dict(loss_dict)
+        # loss_dict_reduced_unscaled = {
+        #     f"{k}_unscaled": v for k, v in loss_dict_reduced.items()
+        # }
+        # loss_dict_reduced_scaled = {
+        #     k: v * weight_dict[k]
+        #     for k, v in loss_dict_reduced.items()
+        #     if k in weight_dict
+        # }
+        # losses_reduced_scaled = sum(loss_dict_reduced_scaled.values())
 
+        # loss_value = losses_reduced_scaled.item()
 
 
         if self.mode_2_sampling_mode[mode] in (DatasetSamplingMode.MIXED, DatasetSamplingMode.RANDOM):
             # We only want to evaluate the last batch_size samples if we use random sampling (or mixed).
             # This is because otherwise we would mostly evaluate the init phase of the sequence.
-            predictions = predictions[-batch_size:]
+            predictions['pred_logits'] = predictions['pred_logits'][-batch_size:]
+            predictions['pred_boxes'] = predictions['pred_boxes'][-batch_size:]
+            predictions['enc_outputs']['pred_logits'] = predictions['enc_outputs']['pred_logits'][-batch_size:]
             obj_labels = obj_labels[-batch_size:]
 
-        pred_processed = postprocess(prediction=predictions,
-                                     num_classes=self.mdl_config.head.num_classes,
-                                     conf_thre=self.mdl_config.postprocess.confidence_threshold,
-                                     nms_thre=self.mdl_config.postprocess.nms_threshold)
+        # pred_processed = postprocess(prediction=predictions,
+        #                              num_classes=self.mdl_config.head.num_classes,
+        #                              conf_thre=self.mdl_config.postprocess.confidence_threshold,
+        #                              nms_thre=self.mdl_config.postprocess.nms_threshold)
 
+
+        pred_processed = self.mdl.postprocessors['bbox'](predictions)
+        pred_processed = self.to_yolox(pred_processed)
         loaded_labels_proph, yolox_preds_proph = to_prophesee(obj_labels, pred_processed)
 
+        # print(f"{losses=}")
         assert losses is not None
-        assert 'loss' in losses
+        # assert 'loss' in losses
 
         self.smooth_loss(P, 3)
 
@@ -241,12 +263,12 @@ class LWDETERModule(pl.LightningModule):
             ObjDetOutput.PRED_PROPH: yolox_preds_proph[-batch_size:],
             ObjDetOutput.EV_REPR: event_repr[-batch_size:],
             ObjDetOutput.SKIP_VIZ: False,
-            'loss': losses['loss']
+            'loss': losses
         }
 
         # Logging
         prefix = f'{mode_2_string[mode]}/'
-        log_dict = {f'{prefix}{k}': v for k, v in losses.items()}
+        log_dict = {f'{prefix}{k}': v for k, v in loss_dict.items()}
         self.log_dict(log_dict, on_step=True, on_epoch=True, batch_size=batch_size, sync_dist=True)
 
         if mode in self.mode_2_psee_evaluator and len(loaded_labels_proph) > 0:
@@ -257,13 +279,29 @@ class LWDETERModule(pl.LightningModule):
                 self.run_psee_evaluator(mode=mode)
         return output
 
+    def to_yolox(self, lwdeter_postprocessed):
+        yolo_elements = []
+        for elements in lwdeter_postprocessed:
+            yolo_boxes = elements['boxes']
+            yolo_labels = elements['labels'].unsqueeze(1)
+            yolo_scores = elements['scores'].unsqueeze(1)
+            buffer = th.zeros(yolo_boxes.shape[0], device=yolo_boxes.device).unsqueeze(1)
+
+            yolo_format = th.cat([yolo_boxes,
+                                    buffer,
+                                    yolo_scores,
+                                    yolo_labels], dim=1)
+            yolo_elements.append(yolo_format)
+        return yolo_elements
+
     def _val_test_step_impl(self, batch: Any, mode: Mode) -> Optional[STEP_OUTPUT]:
         data = self.get_data_from_batch(batch)
         worker_id = self.get_worker_id_from_batch(batch)
 
         assert mode in (Mode.VAL, Mode.TEST)
         ev_tensor_sequence = data[DataType.EV_REPR]
-        image_sequence = data[DataType.IMAGE]
+        # image_sequence = data[DataType.IMAGE]
+        image_sequence = None
         sparse_obj_labels = data[DataType.OBJLABELS_SEQ]
         is_first_sample = data[DataType.IS_FIRST_SAMPLE]
 
@@ -306,38 +344,42 @@ class LWDETERModule(pl.LightningModule):
         if len(obj_labels) == 0:
             return {ObjDetOutput.SKIP_VIZ: True}
 
-        labels_yolox = ObjectLabels.get_labels_as_batched_tensor(obj_label_list=obj_labels, format_='yolox')
-        labels_yolox = labels_yolox.to(dtype=self.dtype)
+        labels_lwdetr = ObjectLabels.get_labels_as_batched_tensor(obj_label_list=obj_labels, format_='lwdetr')
 
         selected_backbone_features = backbone_feature_selector.get_batched_backbone_features()
+        fpn_features = self.mdl.forward_fpn(backbone_features=selected_backbone_features)
 
-        image_sequence = th.cat(image_sequence, dim=0)
-        image_sequence = self.input_padder.pad_tensor_ev_repr(image_sequence)
+        sparsity_mask = self.get_sparsity_mask(fpn_features[0], 0.2)
 
-        # predictions, losses = self.mdl.forward_detect(backbone_features=selected_backbone_features, rgb_image=image_sequence, targets=labels_yolox)
+        max = np.max((sparsity_mask.shape[-1], sparsity_mask.shape[-2]))
+        sparsity_mask, pad = InputPadderFromShape._pad_tensor_impl(sparsity_mask, (max, max), mode='constant', value=1)
+        sparsity_mask = sparsity_mask.flatten(1,2)
 
-        # pred_processed = postprocess(prediction=predictions,
-        #                              num_classes=self.mdl_config.head.num_classes,
-        #                              conf_thre=self.mdl_config.postprocess.confidence_threshold,
-        #                              nms_thre=self.mdl_config.postprocess.nms_threshold)
+        predictions, loss_dict = self.mdl.forward_detect(ev_tensor_sequence, image_sequence, sparsity_mask, labels_lwdetr)
+        weight_dict = self.mdl.criterion.weight_dict
+        losses = sum(
+            loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict
+        )
 
-        # loaded_labels_proph, yolox_preds_proph = to_prophesee(obj_labels, pred_processed)
-        # # print(loaded_labels_proph)
-        # # For visualization, we only use the last item (per batch).
-        # output = {
-        #     ObjDetOutput.LABELS_PROPH: loaded_labels_proph[-1],
-        #     ObjDetOutput.PRED_PROPH: yolox_preds_proph[-1],
-        #     ObjDetOutput.EV_REPR: event_repr[-1],
-        #     ObjDetOutput.SKIP_VIZ: False,
-        # }
 
-        # if self.started_training:
-        #     self.mode_2_psee_evaluator[mode].add_labels(loaded_labels_proph)
-        #     self.mode_2_psee_evaluator[mode].add_predictions(yolox_preds_proph)
-        #     self.val_losses.append(losses)
+        pred_processed = self.mdl.postprocessors['bbox'](predictions)
+        pred_processed = self.to_yolox(pred_processed)
+        loaded_labels_proph, yolox_preds_proph = to_prophesee(obj_labels, pred_processed)
+        # print(loaded_labels_proph)
+        # For visualization, we only use the last item (per batch).
+        output = {
+            ObjDetOutput.LABELS_PROPH: loaded_labels_proph[-1],
+            ObjDetOutput.PRED_PROPH: yolox_preds_proph[-1],
+            ObjDetOutput.EV_REPR: event_repr[-1],
+            ObjDetOutput.SKIP_VIZ: False,
+        }
 
-        # return output
-        return None
+        if self.started_training:
+            self.mode_2_psee_evaluator[mode].add_labels(loaded_labels_proph)
+            self.mode_2_psee_evaluator[mode].add_predictions(yolox_preds_proph)
+            self.val_losses.append(losses)
+
+        return output
 
     def validation_step(self, batch: Any, batch_idx: int) -> Optional[STEP_OUTPUT]:
         return self._val_test_step_impl(batch=batch, mode=Mode.VAL)
@@ -355,10 +397,8 @@ class LWDETERModule(pl.LightningModule):
         assert batch_size is not None
         assert hw_tuple is not None
         if psee_evaluator.has_data():
-            print("has_data")
             metrics = psee_evaluator.evaluate_buffer(img_height=hw_tuple[0],
                                                      img_width=hw_tuple[1])
-            print(f"{metrics=}")
             assert metrics is not None
 
             prefix = f'{mode_2_string[mode]}/'
@@ -516,6 +556,10 @@ class LWDETERModule(pl.LightningModule):
         assert self.mode_2_psee_evaluator[mode].has_data()
         self.run_psee_evaluator(mode=mode)
 
+    # def lr_scheduler_step(self, scheduler, metric, optimizer_idx):
+    #     # Custom step logic
+    #     scheduler.step(self.current_epoch, metric)
+
     def configure_optimizers(self) -> Any:
         lr = self.train_config.learning_rate
         weight_decay = self.train_config.weight_decay
@@ -539,7 +583,20 @@ class LWDETERModule(pl.LightningModule):
             total_steps=total_steps,
             pct_start=scheduler_params.pct_start,
             cycle_momentum=False,
-            anneal_strategy='linear')
+            anneal_strategy='cos')
+        # lr_scheduler = CosineLRScheduler(
+        #     optimizer,
+        #     t_initial=100,
+        #     t_mul=1.0,
+        #     lr_min=lr,
+        #     decay_rate=0.1,
+        #     cycle_limit=1,
+        #     t_in_epochs=True,
+        #     noise_range_t=None,
+        #     noise_pct=0.67,
+        #     noise_std=1.0,
+        #     noise_seed=42,
+        # )
         lr_scheduler_config = {
             "scheduler": lr_scheduler,
             "interval": "step",
@@ -547,5 +604,6 @@ class LWDETERModule(pl.LightningModule):
             "strict": True,
             "name": 'learning_rate',
         }
+
 
         return {'optimizer': optimizer, 'lr_scheduler': lr_scheduler_config}

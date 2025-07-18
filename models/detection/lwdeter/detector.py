@@ -15,7 +15,7 @@ from utils.timers import TimerDummy as CudaTimer
 
 from data.utils.types import BackboneFeatures, LstmStates
 from .lwdeter import build as build_lwdeter
-
+from util.box_ops import box_xyxy_to_cxcywh
 
 class LWDETERDetector(th.nn.Module):
     def __init__(self,
@@ -53,24 +53,42 @@ class LWDETERDetector(th.nn.Module):
 
         return fpn_features
 
-    def lw_deter_labels(self, targets):
+    # moved conversion to object_labels can maybe remove but validation of 
+    # lwdetr format in object labels has to be done
+    def lw_deter_labels(self, targets, im_h, im_w):
+        # This function could be possibly done nicer
+        # our dataloader outputs torch.empty((0,5)) for empty data
+        # lw deter expects torch.empty(0) the target["labels"] if there is no label at all(in none of the batches)
+        # if there are some empty lables (not all the empty labels and boxes are removed)
+
         new_targets = []
-        annotations = []
+        h, w = im_h, im_w
         for image_id, gt in enumerate(targets):
             im_id = image_id + 1
             target = {}
-            h,w = gt[0, 3:5]
-            boxes = gt[:, 1:5]
-            
-            boxes[:, 2:] += boxes[:, :2]
-            print(f"{boxes.dtype=}")
-            target["boxes"] = boxes
-            target["labels"] = gt[:, 0].int()
-            target["image_id"] = th.tensor(im_id, device=gt.device) 
-            target["orig_size"] = th.as_tensor([int(h), int(w)])
-            target["size"] = th.as_tensor([int(h), int(w)])
+            if targets.nelement() == 0:
+                target["boxes"] = th.empty((0,4), device=gt.device)
+                target["labels"] = th.empty(0,dtype=th.int64, device=gt.device)
+                target["image_id"] = th.tensor(im_id, device=gt.device) 
+                target["orig_size"] = th.as_tensor([int(h), int(w)])
+                target["size"] = th.as_tensor([int(h), int(w)])
+                new_targets.append(target)
+            else:
+                h,w = gt[0, 3:5]
+                boxes = gt[:, 1:5]
+                boxes[:, 2:] += boxes[:, :2]
+                boxes = box_xyxy_to_cxcywh(boxes)
+                boxes = boxes / th.tensor([im_w, im_h, im_w, im_h], device=gt.device)
+                non_empty_mask = ~(boxes == 0).all(dim=1)
+                boxes = boxes[non_empty_mask]
+                labels = gt[:, 0].int()[non_empty_mask]
+                target["boxes"] = boxes
+                target["labels"] = labels
+                target["image_id"] = th.tensor(im_id, device=gt.device) 
+                target["orig_size"] = th.as_tensor([int(h), int(w)])
+                target["size"] = th.as_tensor([int(h), int(w)])
 
-            new_targets.append(target)
+                new_targets.append(target)
         return new_targets
 
 
@@ -82,23 +100,14 @@ class LWDETERDetector(th.nn.Module):
             Tuple[th.Tensor, Union[Dict[str, th.Tensor], None]]:
 
         device = next(iter(event_frame)).device
-        event_frame = th.vstack(event_frame).half()
-        targets = targets.half()
-        # print(f"{event_frame.shape=}")
-        # print(f"{sparsity_mask.shape=}")
+        dtype = next(self.parameters()).dtype
+        event_frame = th.vstack(event_frame).to(dtype)
         with CudaTimer(device=device, timer_name="HEAD + Loss"):
             outputs = self.lwdeter(event_frame, sparsity_mask, targets)
 
-        targets = self.lw_deter_labels(targets)
-        # print(f"{targets=}")
-        # sys.exit(0)
         loss_dict = self.criterion(outputs, targets)
-        weight_dict = self.criterion.weight_dict
-        losses = sum(
-            loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict
-        )
 
-        return outputs, losses
+        return outputs, loss_dict
 
     def forward(self,
                 x: th.Tensor,

@@ -69,7 +69,7 @@ class SmoothedValue(object):
         """
         if not is_dist_avail_and_initialized():
             return
-        t = torch.tensor([self.count, self.total], device="cuda").float()
+        t = torch.tensor([self.count, self.total],dtype=torch.float64, device="cuda")
         dist.barrier()
         dist.all_reduce(t)
         t = t.tolist()
@@ -472,18 +472,13 @@ class NestedTensor(object):
 def nested_tensor_from_tensor_list(tensor_list: List[Tensor]):
     # TODO make this more general
     # checks if the first tensor in the tensor list has dim=3
-    print(f"{len(tensor_list)=}")
-    print(f"{tensor_list.shape=}")
-    print(f"{tensor_list.shape[-1]=}")
-    print(f"{tensor_list.shape[-2]=}")
     max = np.max((tensor_list.shape[-1], tensor_list.shape[-2]))
     B, C, H, W = tensor_list.shape
     ev_tensors, pad = InputPadderFromShape._pad_tensor_impl(tensor_list, (max, max), mode='constant', value=0)
-    print(f"{ev_tensors.shape=}")
-    mask = torch.zeros((B, H, W),dtype=ev_tensors.dtype, device=ev_tensors.device)
+    mask = torch.ones((B, H, W),dtype=bool, device=ev_tensors.device)
     left, right, top, bottom = pad
-    mask = F.pad(mask, (left, right, top, bottom), mode='constant', value=1)
-    print(f"{mask.shape=}")
+    mask = F.pad(mask, (left, right, top, bottom), mode='constant', value=True)
+    # print(f"{ev_tensors.shape=}")
 
     return NestedTensor(ev_tensors, mask)
 

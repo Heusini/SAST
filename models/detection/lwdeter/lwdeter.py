@@ -22,6 +22,7 @@ from typing import Callable
 import torch
 import torch.nn.functional as F
 from torch import nn
+from omegaconf import ListConfig
 
 from util import box_ops
 from util.misc import (NestedTensor, nested_tensor_from_tensor_list,
@@ -31,6 +32,7 @@ from util.misc import (NestedTensor, nested_tensor_from_tensor_list,
 from .backbone import build_backbone
 from .matcher import build_matcher
 from .transformer import build_transformer
+from util.utils import BestMetricHolder, ModelEma, clean_state_dict
 
 # Enable logging when CudaTimer is imported
 #from util.timers import CudaTimer as CudaTimer
@@ -128,13 +130,8 @@ class LWDETR(nn.Module):
                                 dictionnaries containing the two above keys for each decoder layer.
         """
 
-        print(f"{samples.dtype=}")
-        # print(f"{samples.mask.dtype=}")
-        print(f"{sparsity_mask.dtype=}")
         if isinstance(samples, (list, torch.Tensor)):
             samples = nested_tensor_from_tensor_list(samples)
-        print(f"{samples.tensors.dtype=}")
-        print(f"{samples.mask.dtype=}")
 
         with CudaTimer(timer_name="Backbone"):
             features, poss = self.backbone(samples, sparsity_mask)
@@ -277,7 +274,6 @@ class SetCriterion(nn.Module):
         """
         assert 'pred_logits' in outputs
         src_logits = outputs['pred_logits']
-        print(f"{src_logits.dtype=}")
 
         idx = self._get_src_permutation_idx(indices)
         target_classes_o = torch.cat([t["labels"][J] for t, (_, J) in zip(targets, indices)])
@@ -285,7 +281,7 @@ class SetCriterion(nn.Module):
         if self.ia_bce_loss:
             alpha = self.focal_alpha
             gamma = 2 
-            src_boxes = outputs['pred_boxes'][idx].half()
+            src_boxes = outputs['pred_boxes'][idx]
             target_boxes = torch.cat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], dim=0)
 
             iou_targets=torch.diag(box_ops.box_iou(
@@ -302,12 +298,8 @@ class SetCriterion(nn.Module):
             pos_ind.append(target_classes_o)
 
             t = prob[pos_ind].pow(alpha) * pos_ious.pow(1 - alpha)
-            print(f"{t.dtype=}")
             t = torch.clamp(t, 0.01).detach()
-            print(f"{t.dtype=}")
 
-            print(f"{pos_weights.dtype=}")
-            print(f"{t.dtype=}")
             pos_weights[pos_ind] = t
             neg_weights[pos_ind] = 1 - t
             loss_ce = - pos_weights * prob.log() - neg_weights * (1 - prob).log()
@@ -643,5 +635,41 @@ def build(args):
                              ia_bce_loss=args.ia_bce_loss)
     criterion.to(device)
     postprocessors = {'bbox': PostProcess(num_select=args.num_select, height=args.img_height, width=args.img_width)}
+
+    model_without_ddp = model
+    if args.pretrain_weights is not None:
+        checkpoint = torch.load(args.pretrain_weights, map_location="cpu")
+        # add support to exclude_keys
+        # e.g., when load object365 pretrain, do not load `class_embed.[weight, bias]`
+        if args.pretrain_exclude_keys is not None:
+            assert isinstance(args.pretrain_exclude_keys, (list, ListConfig))
+            keys_to_remove = []
+            for key in list(checkpoint["model"].keys()):
+                if any(
+                    exclude_key in key for exclude_key in args.pretrain_exclude_keys
+                ):
+                    keys_to_remove.append(key)
+            for key in keys_to_remove:
+                checkpoint["model"].pop(key)
+
+            # for exclude_key in args.pretrain_exclude_keys:
+            #    checkpoint['model'].pop(exclude_key)
+                    # for exclude_key in args.pretrain_exclude_keys:
+            #    checkpoint['model'].pop(exclude_key)
+        if args.pretrain_keys_modify_to_load is not None:
+            from util.obj365_to_coco_model import get_coco_pretrain_from_obj365
+
+            assert isinstance(args.pretrain_keys_modify_to_load, (list, ListConfig))
+            for modify_key_to_load in args.pretrain_keys_modify_to_load:
+                checkpoint["model"][modify_key_to_load] = get_coco_pretrain_from_obj365(
+                    model_without_ddp.state_dict()[modify_key_to_load],
+                    checkpoint["model"][modify_key_to_load],
+                )
+        model_without_ddp.load_state_dict(checkpoint["model"], strict=False)
+        if args.use_ema:
+            # del ema_m
+            ema_m = ModelEma(model_without_ddp)
+
+
 
     return model, criterion, postprocessors

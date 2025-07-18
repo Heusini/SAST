@@ -155,7 +155,6 @@ class Backbone(BackboneBase):
         for feat in feats:
             m = tensor_list.mask
             assert m is not None
-            print(f"{m.shape=}")
             mask = F.interpolate(m[None].float(), size=feat.shape[-2:]).to(torch.bool)[0]
             out.append(NestedTensor(feat, mask))
         return out

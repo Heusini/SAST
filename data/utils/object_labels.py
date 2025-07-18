@@ -152,6 +152,7 @@ class ObjectLabels(ObjectLabelBase):
     def get_labels_as_tensors(self, format_: str = 'yolox') -> th.Tensor:
         self._assert_not_numpy()
 
+        h, w = self.input_size_hw
         if format_ == 'yolox':
             out = th.zeros((len(self), 5), dtype=th.float32, device=self.device)
             if len(self) == 0:
@@ -162,6 +163,19 @@ class ObjectLabels(ObjectLabelBase):
             out[:, 3] = self.w
             out[:, 4] = self.h
             return out
+        elif format_ == 'lwdetr':
+            target = {}
+            boxes = th.zeros((len(self), 4), device=self.device)
+            boxes[:, 0] = self.x
+            boxes[:, 1] = self.y
+            boxes[:, 2] = self.w
+            boxes[:, 3] = self.h
+            boxes = boxes / th.tensor([w, h, w, h], device=self.device)
+            labels = th.zeros(len(self), dtype=th.int32, device=self.device)
+            labels[:] = self.class_id.int()
+            target["boxes"] = boxes
+            target["labels"] = labels
+            return target
         else:
             raise NotImplementedError
 
@@ -180,14 +194,14 @@ class ObjectLabels(ObjectLabelBase):
     def get_labels_as_batched_tensor(obj_label_list: List[ObjectLabels], format_: str = 'yolox') -> th.Tensor:
         num_object_frames = len(obj_label_list)
         if num_object_frames == 0:
-            print("lol1")
             return None
         # assert num_object_frames > 0
         max_num_labels_per_object_frame = max([len(x) for x in obj_label_list])
         # assert max_num_labels_per_object_frame > 0
 
+        tensor_labels = []
+        count = 1
         if format_ == 'yolox':
-            tensor_labels = []
             for labels in obj_label_list:
                 obj_labels_tensor = labels.get_labels_as_tensors(format_=format_)
                 num_to_pad = max_num_labels_per_object_frame - len(labels)
@@ -195,5 +209,13 @@ class ObjectLabels(ObjectLabelBase):
                 tensor_labels.append(padded_labels)
             tensor_labels = th.stack(tensors=tensor_labels, dim=0)
             return tensor_labels
+        elif format_ == 'lwdetr':
+            for labels in obj_label_list:
+                obj_labels_coco = labels.get_labels_as_tensors(format_=format_)
+                obj_labels_coco["image_id"] = count
+                tensor_labels.append(obj_labels_coco)
+                count += 1
+            return tensor_labels
+                
         else:
             raise NotImplementedError
