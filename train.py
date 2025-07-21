@@ -141,14 +141,14 @@ def main(config: DictConfig):
 
         module.mdl.backbone.load_state_dict(backbone_dict, strict=False)
         module.mdl.fpn.load_state_dict(fpn_dict, strict=False)
-        for param in module.mdl.backbone.parameters():
-            param.requires_grad = False
+        # for param in module.mdl.backbone.parameters():
+        #     param.requires_grad = False
 
-        for param in module.mdl.fpn.parameters():
-            param.requires_grad = False
+        # for param in module.mdl.fpn.parameters():
+        #     param.requires_grad = False
 
-        module.mdl.backbone.eval()
-        module.mdl.fpn.eval()
+        # module.mdl.backbone.eval()
+        # module.mdl.fpn.eval()
         ckpt_path = None
 
     # ---------------------

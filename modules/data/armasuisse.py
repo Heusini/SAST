@@ -61,7 +61,7 @@ class ArmaDataModule(pl.LightningDataModule):
         
 
     def setup(self, stage: Optional[str] = None) -> None:
-        percent_dataset = 1
+        percent_dataset = 0.1
         if stage == 'fit':
             if self.train_sampling_mode in (DatasetSamplingMode.RANDOM, DatasetSamplingMode.MIXED):
                 armasuisse_dataset = ArmasuisseDataset.build(dataset_mode=DatasetMode.TRAIN, 
