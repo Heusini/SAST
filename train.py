@@ -146,6 +146,8 @@ def main(config: DictConfig):
 
         backbone_dict = {k.replace("mdl.", ""): v 
                      for k, v in state_dict.items() if k.startswith("mdl.backbone.")}
+        fpn_dict = {k.replace("mdl.", ""): v 
+                     for k, v in state_dict.items() if k.startswith("mdl.fpn.")}
 
         fpn_dict = {k.replace("mdl.", ""): v 
                      for k, v in state_dict.items() if k.startswith("mdl.fpn.")}
@@ -162,7 +164,13 @@ def main(config: DictConfig):
         # module.mdl.fpn.eval()
         ckpt_path = None
 
-    
+    yolox_path = "./yolox_s.pth"
+    if yolox_path:
+        ckpt = torch.load(yolox_path, map_location='cpu')
+        state_dict = ckpt["model"]
+
+        module.mdl.rgb_fpn.load_state_dict(state_dict, strict=False)
+
     # print_layer_sizes(module)
     # summary(module, input_size=(4, 20, 384, 640))
     # sys.exit(0)
@@ -222,5 +230,5 @@ def main(config: DictConfig):
 
 
 if __name__ == '__main__':
-    os.environ["WANDB_MODE"] = "disabled"
+    # os.environ["WANDB_MODE"] = "disabled"
     main()
