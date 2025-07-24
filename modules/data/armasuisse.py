@@ -85,9 +85,8 @@ class ArmaDataModule(pl.LightningDataModule):
             #             batch_size=self.sampling_mode_2_train_batch_size[DatasetSamplingMode.STREAM],
             #             num_workers=self.sampling_mode_2_train_workers[DatasetSamplingMode.STREAM])
         elif stage == 'validate':
-            self.validation_dataset = ArmasuisseDataset.build(dataset_mode=DatasetMode.TRAIN, 
+            self.validation_dataset = ArmasuisseDataset.build(dataset_mode=DatasetMode.VALIDATION,
                                                               dataset_config=self.dataset_config)
-            print(f"{len(self.validation_dataset)=}")
         elif stage == 'test':
             print("test")
             raise NotImplementedError
