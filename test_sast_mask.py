@@ -10,6 +10,7 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1"
 from pathlib import Path
 
 import torch
+import torch.nn as nn
 from torch.backends import cuda, cudnn
 
 cuda.matmul.allow_tf32 = True
@@ -30,6 +31,7 @@ from config.modifier import dynamically_modify_train_config
 from modules.utils.fetch import fetch_data_module, fetch_model_module
 from data.utils.types import DataType, LstmStates, ObjDetOutput, DatasetSamplingMode, BackboneFeatures
 from utils.padding import InputPadderFromShape
+from models.detection.yolox.utils.boxes import postprocess
 
 import matplotlib.pyplot as plt
 
@@ -41,7 +43,6 @@ def draw_plot(image, mask):
     new_mask = np.concatenate(mask)
     new_mask = new_mask.reshape((384, 640))
     mask_normalized = (new_mask-new_mask.min()) / (new_mask.max() - new_mask.min())
-    print(mask_normalized)
 
     plt.imshow(img)
     # plt.imshow(np.zeros_like(img), alpha=0)
@@ -62,7 +63,7 @@ def xy_from_index(index, height, width):
 HEIGHT = 384
 WIDTH = 640
 
-def draw_and_display(img_data, masks, bboxes, window_name='window'):
+def draw_and_display(img_data, masks, bboxes,image = None,predictions =None, window_name='window'):
     height, width = masks.shape
     size = HEIGHT // masks.shape[0]
     img = img_data
@@ -70,14 +71,7 @@ def draw_and_display(img_data, masks, bboxes, window_name='window'):
         img = np.sum(img, axis=0)
     img = np.sum(img, axis=0)
 
-    # img = np.sum(img, axis=0)
-    # print(img.shape)
-    img = img / np.max(img)
-    img = img * 255
-    img = np.array(img, np.uint8)
-    # img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGBA)
-    # img = cv2.applyColorMap(img, cv2.COLORMAP_INFERNO)
-    img = cv2.applyColorMap(img, cv2.COLORMAP_JET)
+    img = cv2.applyColorMap(cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8), cv2.COLORMAP_JET)
 
     mask_color = np.zeros((size, size, 3), dtype=np.uint8)
     mask_color[:, :, 2] = 255
@@ -86,7 +80,22 @@ def draw_and_display(img_data, masks, bboxes, window_name='window'):
         new_bb = bboxes
         new_bb[:, 2:] += new_bb[:, :2]
         new_bb = new_bb.astype(np.int32)
-        img = bbv.draw_multiple_rectangles(img, new_bb.tolist(), thickness=1)
+        img = bbv.draw_multiple_rectangles(img, new_bb.tolist(), thickness=2)
+    if predictions is not None:
+        new_pred = []
+        for p in predictions:
+            if p is None:
+                continue
+            pred = p.numpy()
+            pred = pred[:, :4]
+        # new_pred[:, 2:] += new_pred[:, :2]
+            pred = new_bb.astype(np.int32)
+            if len(pred) > 1:
+                pred = pred.tolist()
+            new_pred.extend(pred)
+        print(new_pred)
+        if len(new_pred) > 0:
+            img = bbv.draw_multiple_rectangles(img, new_pred, bbox_color=(0,0,255), thickness=1)
 
     for y_i in range(height):
         for x_i in range(width):
@@ -100,12 +109,22 @@ def draw_and_display(img_data, masks, bboxes, window_name='window'):
 
     heatmap = np.repeat(np.repeat(masks * 255, y_repeat, axis=0), x_repeat, axis=1)
     heatmap = heatmap.astype(np.uint8)
-    print(heatmap.shape)
-    heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
+    heatmap = cv2.applyColorMap(cv2.normalize(heatmap, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8), cv2.COLORMAP_JET)
 
     # img = cv2.resize(img, (1280, 720), interpolation=cv2.INTER_LINEAR)
-    print(height, width)
     out_img = np.hstack([img, heatmap])
+    if image is not None:
+        image = image.squeeze(0).permute(1,2,0).numpy()
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        image = image * 255
+        image = image.astype(np.uint8)
+        if bboxes is not None:
+            image = bbv.draw_multiple_rectangles(image, new_bb.tolist(), thickness=2)
+        if predictions is not None:
+            if len(new_pred) > 0:
+                image = bbv.draw_multiple_rectangles(image, new_pred, thickness=1, bbox_color=(0, 0, 255))
+
+        out_img = np.hstack([out_img, image])
     cv2.imshow(window_name, out_img)
 
 def draw_and_wait(img_data, masks = None, bboxes = None):
@@ -114,7 +133,7 @@ def draw_and_wait(img_data, masks = None, bboxes = None):
         cv2.destroyAllWindows()
         sys.exit(0)
 
-def map_tokens_to_image(frame, tokens, bboxes):
+def map_tokens_to_image(frame, tokens, bboxes, image=None, predictions=None):
     print(frame.shape)
     sf = 0
     print(f"{tokens[sf].shape=}")
@@ -125,7 +144,7 @@ def map_tokens_to_image(frame, tokens, bboxes):
     min_val = current_token.min()
     max_val = current_token.max()
     normalized_scores = (current_token - min_val) / (max_val - min_val + 1e-8)
-    draw_and_display(frame, normalized_scores.numpy(), bboxes)
+    draw_and_display(frame, normalized_scores.numpy(), bboxes, image, predictions)
     if cv2.waitKey(500) == ord("q"):
         cv2.destroyAllWindows()
         sys.exit(0)
@@ -172,6 +191,9 @@ def main(config: DictConfig):
     input_padder = InputPadderFromShape(desired_hw=in_res_hw)
     # batch = next(iter(val_loader))  # or your own custom input
     # No gradient computation needed during inference
+    mdl_config = config.model
+
+    max_pool = nn.MaxPool2d(2,2)
     for batch in val_loader:
         data = batch['data']
         with torch.no_grad():
@@ -179,22 +201,43 @@ def main(config: DictConfig):
                 ev_tensor_sequence = data[DataType.EV_REPR]
                 sparse_obj_labels = data[DataType.OBJLABELS_SEQ]
                 is_first_sample = data[DataType.IS_FIRST_SAMPLE]
+                image = None
+                if DataType.IMAGE in data.keys():
+                    data_image = data[DataType.IMAGE]
                 token_mask_sequence = data.get(DataType.TOKEN_MASK, None)
                 sequence_len = len(ev_tensor_sequence)
                 batch_size = ev_tensor_sequence[0].shape[0]
                 for tidx in range(sequence_len):
                     ev_tensors = ev_tensor_sequence[tidx]
                     ev_tensors = input_padder.pad_tensor_ev_repr(ev_tensors)
+                    image = input_padder.pad_tensor_ev_repr(data_image[tidx])
                     bboxes = sparse_obj_labels[tidx][0]
                     new_bbs = None
                     if bboxes:
                         new_bb = bboxes.object_labels[:, 1:5]
                         new_bbs = np.vstack(new_bb)
 
-                    preds = module.predict_step(ev_tensors, batch_idx=0)
-                    map_tokens_to_image(ev_tensors.numpy(), preds, new_bbs)
+                    preds, _, _ = module.mdl.backbone(ev_tensors)
+                    # for i in range(len(preds)):
+                    #     print(preds[i].shape)
+                    preds = module.mdl.fpn(preds)
+                    rgb_preds = module.mdl.rgb_fpn(image)
+                    features = []
+                    for f, r in zip(preds, rgb_preds):
+                        intermediate_features = torch.add(f, r)
+                        features.append(intermediate_features)
 
-
+                    output, _ = module.mdl.yolox_head(features)
+                    pred_processed = postprocess(prediction=output,
+                                                 num_classes=mdl_config.head.num_classes,
+                                                 conf_thre=mdl_config.postprocess.confidence_threshold,
+                                                 nms_thre=mdl_config.postprocess.nms_threshold)
+                    print(pred_processed)
+                    print(new_bbs)
+                    # for i in range(len(preds)):
+                    #     preds[i] = max_pool(preds[i])
+                    # preds = [preds[i] for i in [1, 2, 3, 4]]
+                    map_tokens_to_image(ev_tensors.numpy(), preds, new_bbs, image, pred_processed)
 
 if __name__ == '__main__':
     # torch.multiprocessing.set_start_method('spawn')
