@@ -165,6 +165,17 @@ class ObjectLabels(ObjectLabelBase):
         else:
             raise NotImplementedError
 
+    def get_labels(self) -> th.Tensor:
+        out = th.zeros((len(self), 5), device=self.device)
+        if len(self) == 0:
+            return out
+        out[:, 0] = self.class_id
+        out[:, 1] = self.x
+        out[:, 2] = self.y
+        out[:, 3] = self.w
+        out[:, 4] = self.h
+        return out
+
     @staticmethod
     def get_labels_as_batched_tensor(obj_label_list: List[ObjectLabels], format_: str = 'yolox') -> th.Tensor:
         num_object_frames = len(obj_label_list)
