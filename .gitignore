@@ -5,4 +5,4 @@ outputs/
 validation_logs/
 .hydra
 SAST.onnx
-.pth
+*.pth
