@@ -1,12 +1,19 @@
 name: ???
 path: ???
+
 train:
-  sampling: 'mixed' # ('random', 'stream', 'mixed')
-  random:
-    weighted_sampling: False
-  mixed:
-    w_stream: 1
-    w_random: 1
+  use_fraction: 1
+  sampling: 'random'
+  shuffle: True
+  # sampling: 'mixed' # ('random', 'stream', 'mixed')
+  # random:
+  #   weighted_sampling: False
+  # mixed:
+  #   w_stream: 1
+  #   w_random: 1
+validation:
+  use_fraction: 1
+  shuffle: False
 eval:
   sampling: 'stream'
 data_augmentation:
