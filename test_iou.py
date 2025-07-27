@@ -75,28 +75,20 @@ def to_coco_format(gts, detections, categories=["drone"], height=HEIGHT, width=W
 
         for bbox in gt:
             bbox = bbox.numpy()
-            x1, y1 = bbox[1], bbox[2]
-            w, h = bbox[3], bbox[4]
+            x1, y1 = bbox[0], bbox[1]
+            w, h = bbox[2], bbox[3]
             area = w * h
             annotation = {
                 "area": float(area),
                 "iscrowd": False,
                 "image_id": im_id,
                 "bbox": [x1, y1, w, h],
-                "category_id": int(bbox[0]) + 1,
+                "category_id": int(bbox[4]) + 1,
                 "id": len(annotations) + 1
             }
             annotations.append(annotation)
 
         if pred is not None:
-        #     image_result = {
-        #         'image_id': im_id,
-        #         'category_id': '', 
-        #         'score': '',
-        #         'bbox': '',
-        #     }
-        #     results.append(image_result)
-        # else:
             for bbox in pred:
                 bbox = bbox.numpy()
                 x1, y1 = bbox[0], bbox[1]
@@ -140,7 +132,7 @@ def bbox_processor(bboxes):
     out_bbs = []
     for bbox in bboxes:
         new_box = bbox.clone()
-        new_box = new_box[:, 1:].numpy()
+        new_box = new_box[:, :4].numpy()
         formated_bbox = bbox_xywh_to_xyxy(new_box).astype(np.int32)
         out_bbs.append(formated_bbox)
     return out_bbs
