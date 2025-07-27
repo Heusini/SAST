@@ -15,6 +15,7 @@ from data.utils.types import DataType, LstmStates, ObjDetOutput, DatasetSampling
 from models.detection.yolox.utils.boxes import postprocess
 from models.detection.yolox_extension.models.detector import YoloXDetector
 from utils.evaluation.prophesee.evaluator import PropheseeEvaluator
+from utils.evaluation.evaluator import Evaluator
 from utils.evaluation.prophesee.io.box_loading import to_prophesee
 from utils.padding import InputPadderFromShape
 from .utils.detection import BackboneFeatureSelector, EventReprSelector, RNNStates, Mode, mode_2_string, \
@@ -36,6 +37,7 @@ class Module(pl.LightningModule):
         self.mdl = YoloXDetector(self.mdl_config)
 
         self.val_losses = []
+        self.classes = full_config.dataset.classes
 
         self.mode_2_rnn_states: Dict[Mode, RNNStates] = {
             Mode.TRAIN: RNNStates(),
@@ -48,9 +50,13 @@ class Module(pl.LightningModule):
         self.mode_2_hw: Dict[Mode, Optional[Tuple[int, int]]] = {}
         self.mode_2_batch_size: Dict[Mode, Optional[int]] = {}
         self.mode_2_psee_evaluator: Dict[Mode, Optional[PropheseeEvaluator]] = {}
+        self.mode_2_evaluator: Dict[Mode, Optional[PropheseeEvaluator]] = {}
         self.mode_2_sampling_mode: Dict[Mode, DatasetSamplingMode] = {}
 
         self.started_training = True
+
+
+        height, width = self.mdl_config.backbone.in_res_hw
 
         dataset_train_sampling = self.full_config.dataset.train.sampling
         dataset_eval_sampling = self.full_config.dataset.eval.sampling
@@ -61,10 +67,8 @@ class Module(pl.LightningModule):
             self.train_metrics_config = self.full_config.logging.train.metrics
 
             if self.train_metrics_config.compute:
-                self.mode_2_psee_evaluator[Mode.TRAIN] = PropheseeEvaluator(
-                    dataset=dataset_name, downsample_by_2=self.full_config.dataset.downsample_by_factor_2)
-            self.mode_2_psee_evaluator[Mode.VAL] = PropheseeEvaluator(
-                dataset=dataset_name, downsample_by_2=self.full_config.dataset.downsample_by_factor_2)
+                self.mode_2_psee_evaluator[Mode.TRAIN] = Evaluator(self.classes, height, width)
+            self.mode_2_psee_evaluator[Mode.VAL] = Evaluator(self.classes, height, width)
             self.mode_2_sampling_mode[Mode.TRAIN] = dataset_train_sampling
             self.mode_2_sampling_mode[Mode.VAL] = dataset_eval_sampling
 
@@ -199,7 +203,13 @@ class Module(pl.LightningModule):
                                      conf_thre=self.mdl_config.postprocess.confidence_threshold,
                                      nms_thre=self.mdl_config.postprocess.nms_threshold)
 
-        loaded_labels_proph, yolox_preds_proph = to_prophesee(obj_labels, pred_processed)
+        
+        # get labels in xyxy format
+        gt_labels = [gt.get_labels_xyxy().detach().cpu().numpy() for gt in obj_labels]
+        # boxes are in xyxy format
+        pred_processed = [np.empty((0,7)) if pred is None else pred.detach().cpu().numpy() for pred in pred_processed]
+        # loaded_labels_proph, yolox_preds_proph = to_prophesee(obj_labels, pred_processed)
+
 
         assert losses is not None
         assert 'loss' in losses
@@ -211,8 +221,8 @@ class Module(pl.LightningModule):
         self.trainer._logger_connector.progress_bar_metrics['STEP'] = self.trainer.global_step
         # For visualization, we only use the last batch_size items.
         output = {
-            ObjDetOutput.LABELS_PROPH: loaded_labels_proph[-batch_size:],
-            ObjDetOutput.PRED_PROPH: yolox_preds_proph[-batch_size:],
+            ObjDetOutput.LABELS_PROPH: gt_labels[-batch_size:],
+            ObjDetOutput.PRED_PROPH: pred_processed[-batch_size:],
             ObjDetOutput.EV_REPR: event_repr[-batch_size:],
             ObjDetOutput.SKIP_VIZ: False,
             'loss': losses['loss']
@@ -223,9 +233,9 @@ class Module(pl.LightningModule):
         log_dict = {f'{prefix}{k}': v for k, v in losses.items()}
         self.log_dict(log_dict, on_step=True, on_epoch=True, batch_size=batch_size, sync_dist=True)
 
-        if mode in self.mode_2_psee_evaluator and len(loaded_labels_proph) > 0:
-            self.mode_2_psee_evaluator[mode].add_labels(loaded_labels_proph)
-            self.mode_2_psee_evaluator[mode].add_predictions(yolox_preds_proph)
+        if mode in self.mode_2_psee_evaluator:
+            self.mode_2_psee_evaluator[mode].add_labels(gt_labels)
+            self.mode_2_psee_evaluator[mode].add_predictions(pred_processed)
             if self.train_metrics_config.detection_metrics_every_n_steps is not None and \
                     step > 0 and step % self.train_metrics_config.detection_metrics_every_n_steps == 0:
                 self.run_psee_evaluator(mode=mode)
@@ -289,20 +299,21 @@ class Module(pl.LightningModule):
                                      num_classes=self.mdl_config.head.num_classes,
                                      conf_thre=self.mdl_config.postprocess.confidence_threshold,
                                      nms_thre=self.mdl_config.postprocess.nms_threshold)
-
-        loaded_labels_proph, yolox_preds_proph = to_prophesee(obj_labels, pred_processed)
+        # loaded_labels_proph, yolox_preds_proph = to_prophesee(obj_labels, pred_processed)
+        gt_labels = [gt.get_labels_xyxy().detach().cpu().numpy() for gt in obj_labels]
+        pred_processed = [np.empty((0,7)) if pred is None else pred.detach().cpu().numpy() for pred in pred_processed]
         # print(loaded_labels_proph)
         # For visualization, we only use the last item (per batch).
         output = {
-            ObjDetOutput.LABELS_PROPH: loaded_labels_proph[-1],
-            ObjDetOutput.PRED_PROPH: yolox_preds_proph[-1],
+            ObjDetOutput.LABELS_PROPH: gt_labels[-1],
+            ObjDetOutput.PRED_PROPH: pred_processed[-1],
             ObjDetOutput.EV_REPR: event_repr[-1],
             ObjDetOutput.SKIP_VIZ: False,
         }
 
         if self.started_training:
-            self.mode_2_psee_evaluator[mode].add_labels(loaded_labels_proph)
-            self.mode_2_psee_evaluator[mode].add_predictions(yolox_preds_proph)
+            self.mode_2_psee_evaluator[mode].add_labels(gt_labels)
+            self.mode_2_psee_evaluator[mode].add_predictions(pred_processed)
             self.val_losses.append(losses)
 
         return output
@@ -324,8 +335,7 @@ class Module(pl.LightningModule):
         assert hw_tuple is not None
         if psee_evaluator.has_data():
             # print("has_data")
-            metrics = psee_evaluator.evaluate_buffer(img_height=hw_tuple[0],
-                                                     img_width=hw_tuple[1])
+            metrics = psee_evaluator.evaluate_buffer()
             # print(f"{metrics=}")
             assert metrics is not None
 
@@ -436,7 +446,7 @@ class Module(pl.LightningModule):
 
         return accumulated_loss
 
-    def log_wanddb(self, log_dict):
+    def log_wandb(self, log_dict):
         step = self.trainer.global_step
         if dist.is_available() and dist.is_initialized():
             # We now have to manually sync (average the metrics) across processes in case of distributed training.
@@ -475,7 +485,7 @@ class Module(pl.LightningModule):
 
         log_dict = self.sum_losses(mode)
         self.log_dict(log_dict, on_step=False, on_epoch=True, batch_size=batch_size, sync_dist=True)
-        self.log_wanddb(log_dict)
+        self.log_wandb(log_dict)
         # clear losses list
         self.val_losses = []
 

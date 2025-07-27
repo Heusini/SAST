@@ -9,7 +9,12 @@ from data.utils.types import ObjDetOutput
 from loggers.wandb_logger import WandbLogger
 from utils.evaluation.prophesee.visualize.vis_utils import LABELMAP_GEN1, LABELMAP_GEN4_SHORT, draw_bboxes
 from .viz_base import VizCallbackBase
+import bbox_visualizer as bbv
+import numpy as np
 
+RED=(255, 0, 0)
+GREEN=(0, 255, 0)
+BLUE=(0, 0, 255)
 
 class DetectionVizEnum(Enum):
     EV_IMG = auto()
@@ -22,14 +27,26 @@ class DetectionVizCallback(VizCallbackBase):
         super().__init__(config=config, buffer_entries=DetectionVizEnum)
 
         dataset_name = config.dataset.name
-        if dataset_name == 'gen1':
-            self.label_map = LABELMAP_GEN1
-        elif dataset_name == 'gen4':
-            self.label_map = LABELMAP_GEN4_SHORT
-        elif dataset_name == 'arma':
-            self.label_map = LABELMAP_GEN4_SHORT
-        else:
-            raise NotImplementedError
+        self.label_map = config.dataset.classes
+
+    def get_bbox_text(self, bbox):
+        class_name = self.label_map[int(bbox[4]) % len(self.label_map)]
+        output = f"{class_name}"
+        if len(bbox) > 5:
+            score = bbox[5]
+            output = f"{output}: {score:.2f}"
+        return output
+
+    def draw_bboxes(self, image, bboxes, color):
+        for box in bboxes:
+            if box is None or len(box) == 0:
+                continue
+            bb = box.copy().astype(np.int32)
+            bb = bb[:4]
+            image = bbv.draw_rectangle(image, bb, bbox_color=color, thickness=1)
+            bbox_txt = self.get_bbox_text(box)
+            # image = bbv.add_label(image, bbox_txt, bb, text_bg_color=color, size=0.2,top=True)
+        return image
 
     def on_train_batch_end_custom(self,
                                   logger: WandbLogger,
@@ -55,12 +72,11 @@ class DetectionVizCallback(VizCallbackBase):
 
             predictions_proph = outputs[ObjDetOutput.PRED_PROPH][sample_idx]
             prediction_img = ev_img.copy()
-            draw_bboxes(prediction_img, predictions_proph, labelmap=self.label_map)
+            prediction_img = self.draw_bboxes(prediction_img, predictions_proph, color=BLUE)
 
             label_img = ev_img.copy()
             labels_proph = outputs[ObjDetOutput.LABELS_PROPH][sample_idx]
-            if len(labels_proph) > 0:
-                draw_bboxes(label_img, labels_proph, labelmap=self.label_map)
+            label_img = self.draw_bboxes(label_img, labels_proph, color=GREEN)
 
             merged_img.append(rearrange([prediction_img, label_img], 'pl H W C -> (pl H) W C', pl=2, C=3))
             captions.append(f'sample_{sample_idx}')
@@ -80,14 +96,12 @@ class DetectionVizCallback(VizCallbackBase):
 
         predictions_proph = outputs[ObjDetOutput.PRED_PROPH]
         prediction_img = ev_img.copy()
-        if len(predictions_proph) > 0:
-            draw_bboxes(prediction_img, predictions_proph, labelmap=self.label_map)
+        prediction_img = self.draw_bboxes(prediction_img, predictions_proph, color=BLUE)
         self.add_to_buffer(DetectionVizEnum.PRED_IMG_PROPH, prediction_img)
 
         labels_proph = outputs[ObjDetOutput.LABELS_PROPH]
         label_img = ev_img.copy()
-        if labels_proph is not None:
-            draw_bboxes(label_img, labels_proph, labelmap=self.label_map)
+        label_img = self.draw_bboxes(label_img, labels_proph, color=GREEN)
         self.add_to_buffer(DetectionVizEnum.LABEL_IMG_PROPH, label_img)
 
     def on_validation_epoch_end_custom(self, logger: WandbLogger):

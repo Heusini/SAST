@@ -165,15 +165,15 @@ class ObjectLabels(ObjectLabelBase):
         else:
             raise NotImplementedError
 
-    def get_labels(self) -> th.Tensor:
+    def get_labels_xyxy(self) -> th.Tensor:
         out = th.zeros((len(self), 5), device=self.device)
         if len(self) == 0:
             return out
-        out[:, 0] = self.class_id
-        out[:, 1] = self.x
-        out[:, 2] = self.y
-        out[:, 3] = self.w
-        out[:, 4] = self.h
+        out[:, 0] = self.x
+        out[:, 1] = self.y
+        out[:, 2] = self.x + self.w
+        out[:, 3] = self.y + self.h
+        out[:, 4] = self.class_id
         return out
 
     @staticmethod
