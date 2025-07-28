@@ -1,7 +1,0 @@
-# ninja log v5
-0	2321	1752583188743596715	/home/sheusinger/repos/SAST/models/detection/lwdeter/ops/build/temp.linux-x86_64-cpython-39/home/sheusinger/repos/SAST/models/detection/lwdeter/ops/src/cpu/ms_deform_attn_cpu.o	98b0a48da5f7e6b6
-1	7429	1752583193839843072	/home/sheusinger/repos/SAST/models/detection/lwdeter/ops/build/temp.linux-x86_64-cpython-39/home/sheusinger/repos/SAST/models/detection/lwdeter/ops/src/vision.o	2b533775a9744b5d
-5	8195	1752583295936770132	/home/sheusinger/repos/SAST/models/detection/lwdeter/ops/build/temp.linux-x86_64-cpython-39/home/sheusinger/repos/SAST/models/detection/lwdeter/ops/src/cuda/ms_deform_attn_cuda.o	76669713ca7a8216
-5	2492	1752583910742218828	/home/sheusinger/repos/SAST/models/detection/lwdeter/ops/build/temp.linux-x86_64-cpython-39/home/sheusinger/repos/SAST/models/detection/lwdeter/ops/src/cpu/ms_deform_attn_cpu.o	9c83c70f9dce315d
-5	7870	1752583916106474733	/home/sheusinger/repos/SAST/models/detection/lwdeter/ops/build/temp.linux-x86_64-cpython-39/home/sheusinger/repos/SAST/models/detection/lwdeter/ops/src/vision.o	848ee4c274bc0fbf
-5	8824	1752583917082521295	/home/sheusinger/repos/SAST/models/detection/lwdeter/ops/build/temp.linux-x86_64-cpython-39/home/sheusinger/repos/SAST/models/detection/lwdeter/ops/src/cuda/ms_deform_attn_cuda.o	b51c2295b75cb82b

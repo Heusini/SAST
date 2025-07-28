@@ -14,10 +14,10 @@ from ..yolox_extension.models.build import build_yolox_fpn, build_yolox_head
 from utils.timers import TimerDummy as CudaTimer
 
 from data.utils.types import BackboneFeatures, LstmStates
-from .lwdeter import build as build_lwdeter
+from .lwdetr import build as build_lwdetr
 from util.box_ops import box_xyxy_to_cxcywh
 
-class LWDETERDetector(th.nn.Module):
+class LWDETRDetector(th.nn.Module):
     def __init__(self,
                  model_cfg: DictConfig):
         super().__init__()
@@ -34,7 +34,7 @@ class LWDETERDetector(th.nn.Module):
         self.fpn = build_yolox_fpn(fpn_cfg, in_channels=in_channels)
 
         strides = self.backbone.get_strides(fpn_cfg.in_stages)
-        self.lwdeter, self.criterion, self.postprocessors = build_lwdeter(head_cfg)
+        self.lwdetr, self.criterion, self.postprocessors = build_lwdetr(head_cfg)
 
     def forward_backbone(self,
                          x: th.Tensor,
@@ -103,7 +103,7 @@ class LWDETERDetector(th.nn.Module):
         dtype = next(self.parameters()).dtype
         event_frame = th.vstack(event_frame).to(dtype)
         with CudaTimer(device=device, timer_name="HEAD + Loss"):
-            outputs = self.lwdeter(event_frame, sparsity_mask, targets)
+            outputs = self.lwdetr(event_frame, sparsity_mask, targets)
 
         loss_dict = self.criterion(outputs, targets)
 

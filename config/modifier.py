@@ -21,7 +21,7 @@ def dynamically_modify_train_config(config: DictConfig):
 
         mdl_cfg = config.model
         mdl_name = mdl_cfg.name
-        if mdl_name == 'rnndet' or mdl_name == 'eventrgb' or mdl_name == 'lwdeter':
+        if mdl_name == 'rnndet' or mdl_name == 'eventrgb' or mdl_name == 'lwdetr':
             backbone_cfg = mdl_cfg.backbone
             backbone_name = backbone_cfg.name
             print(backbone_name)

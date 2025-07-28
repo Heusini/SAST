@@ -1,6 +1,6 @@
 defaults:
   - base
-name: lwdeter
+name: lwdetr
 backbone:
   name: SASTRNN
   compile:
@@ -54,7 +54,7 @@ fpn:
   depthwise: False
   act: "silu"
 head:
-  name: lwdeter
+  name: lwdetr
   num_classes: 1
   lr: 0.0001 #1e-4
   lr_encoder: 0.00015 #1.5e-4
