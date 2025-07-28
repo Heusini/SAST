@@ -164,13 +164,6 @@ def main(config: DictConfig):
         # module.mdl.fpn.eval()
         ckpt_path = None
 
-    yolox_path = "./yolox_s.pth"
-    if yolox_path:
-        ckpt = torch.load(yolox_path, map_location='cpu')
-        state_dict = ckpt["model"]
-
-        module.mdl.rgb_fpn.load_state_dict(state_dict, strict=False)
-
     # print_layer_sizes(module)
     # summary(module, input_size=(4, 20, 384, 640))
     # sys.exit(0)
