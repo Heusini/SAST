@@ -219,7 +219,7 @@ class YOLOXHead(nn.Module):
         # Modification: return decoded output also during training
         # --------------------------------------------------------
         losses = None
-        if self.training or return_loss:
+        if labels is not None and (self.training or return_loss):
             losses =  self.get_losses(
                 x_shifts,
                 y_shifts,

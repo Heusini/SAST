@@ -1,4 +1,5 @@
-from typing import Any, Optional, Tuple, Union, Dict
+from typing import Any, Optional, Tuple, Union, Dict, Callable
+from types import MethodType
 from warnings import warn
 
 import sys
@@ -15,6 +16,7 @@ from data.utils.types import DataType, LstmStates, ObjDetOutput, DatasetSampling
 from models.detection.yolox.utils.boxes import postprocess
 from models.detection.yolox_extension.models.detector import YoloXDetector
 from utils.evaluation.prophesee.evaluator import PropheseeEvaluator
+from utils.evaluation.evaluator import Evaluator
 from utils.evaluation.prophesee.io.box_loading import to_prophesee
 from utils.padding import InputPadderFromShape
 from .utils.detection import BackboneFeatureSelector, EventReprSelector, RNNStates, Mode, mode_2_string, \
@@ -24,7 +26,7 @@ from utils.timers import CudaTimer
 
 
 class Module(pl.LightningModule):
-    def __init__(self, full_config: DictConfig):
+    def __init__(self, full_config: DictConfig, model: th.nn.Module, step: Callable[[Any, Any, int, Mode],Any]):
         super().__init__()
 
         self.full_config = full_config
@@ -33,7 +35,11 @@ class Module(pl.LightningModule):
         in_res_hw = tuple(self.mdl_config.backbone.in_res_hw)
         self.input_padder = InputPadderFromShape(desired_hw=in_res_hw)
 
-        self.mdl = YoloXDetector(self.mdl_config)
+        self.mdl = model(self.mdl_config)
+
+        self.val_losses = []
+        self.classes = full_config.dataset.classes
+        self.step = MethodType(step, self)
 
         self.val_losses = []
 
@@ -48,9 +54,13 @@ class Module(pl.LightningModule):
         self.mode_2_hw: Dict[Mode, Optional[Tuple[int, int]]] = {}
         self.mode_2_batch_size: Dict[Mode, Optional[int]] = {}
         self.mode_2_psee_evaluator: Dict[Mode, Optional[PropheseeEvaluator]] = {}
+        self.mode_2_evaluator: Dict[Mode, Optional[PropheseeEvaluator]] = {}
         self.mode_2_sampling_mode: Dict[Mode, DatasetSamplingMode] = {}
 
         self.started_training = True
+
+
+        height, width = self.mdl_config.backbone.in_res_hw
 
         dataset_train_sampling = self.full_config.dataset.train.sampling
         dataset_eval_sampling = self.full_config.dataset.eval.sampling
@@ -61,10 +71,8 @@ class Module(pl.LightningModule):
             self.train_metrics_config = self.full_config.logging.train.metrics
 
             if self.train_metrics_config.compute:
-                self.mode_2_psee_evaluator[Mode.TRAIN] = PropheseeEvaluator(
-                    dataset=dataset_name, downsample_by_2=self.full_config.dataset.downsample_by_factor_2)
-            self.mode_2_psee_evaluator[Mode.VAL] = PropheseeEvaluator(
-                dataset=dataset_name, downsample_by_2=self.full_config.dataset.downsample_by_factor_2)
+                self.mode_2_psee_evaluator[Mode.TRAIN] = Evaluator(self.classes, height, width)
+            self.mode_2_psee_evaluator[Mode.VAL] = Evaluator(self.classes, height, width)
             self.mode_2_sampling_mode[Mode.TRAIN] = dataset_train_sampling
             self.mode_2_sampling_mode[Mode.VAL] = dataset_eval_sampling
 
@@ -117,70 +125,31 @@ class Module(pl.LightningModule):
     def get_data_from_batch(self, batch: Any):
         return batch['data']
 
+
+    def convert_labels_for_logging(self, predictions, obj_labels):
+        pred_processed = postprocess(prediction=predictions,
+                                     num_classes=self.mdl_config.head.num_classes,
+                                     conf_thre=self.mdl_config.postprocess.confidence_threshold,
+                                     nms_thre=self.mdl_config.postprocess.nms_threshold)
+
+        
+        # get labels in xyxy format
+        gt_labels = [gt.get_labels_xyxy().detach().cpu().numpy() for gt in obj_labels]
+        # boxes are in xyxy format
+        pred_processed = [np.empty((0,7)) if pred is None else pred.detach().cpu().numpy() for pred in pred_processed]
+
+        return pred_processed, gt_labels
+
+
     def training_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
+        mode = Mode.TRAIN
         batch = merge_mixed_batches(batch)
         data = self.get_data_from_batch(batch)
         worker_id = self.get_worker_id_from_batch(batch)
-
-        mode = Mode.TRAIN
-        self.started_training = True
         step = self.trainer.global_step
-        ev_tensor_sequence = data[DataType.EV_REPR]
-        sparse_obj_labels = data[DataType.OBJLABELS_SEQ]
-        is_first_sample = data[DataType.IS_FIRST_SAMPLE]
-        token_mask_sequence = data.get(DataType.TOKEN_MASK, None)
 
-        self.mode_2_rnn_states[mode].reset(worker_id=worker_id, indices_or_bool_tensor=is_first_sample)
-
-        sequence_len = len(ev_tensor_sequence)
-        assert sequence_len > 0
-        batch_size = len(sparse_obj_labels[0])
-        if self.mode_2_batch_size[mode] is None:
-            self.mode_2_batch_size[mode] = batch_size
-        else:
-            assert self.mode_2_batch_size[mode] == batch_size
-
-        prev_states = self.mode_2_rnn_states[mode].get_states(worker_id=worker_id)
-        backbone_feature_selector = BackboneFeatureSelector()
-        ev_repr_selector = EventReprSelector()
-        obj_labels = list()
-        event_repr = list()
-        P = 0
-        for tidx in range(sequence_len):
-            ev_tensors = ev_tensor_sequence[tidx]
-            ev_tensors = ev_tensors.to(dtype=self.dtype)
-            ev_tensors = self.input_padder.pad_tensor_ev_repr(ev_tensors)
-            if token_mask_sequence is not None:
-                token_masks = self.input_padder.pad_token_mask(token_mask=token_mask_sequence[tidx])
-            else:
-                token_masks = None
-
-            if self.mode_2_hw[mode] is None:
-                self.mode_2_hw[mode] = tuple(ev_tensors.shape[-2:])
-            else:
-                assert self.mode_2_hw[mode] == ev_tensors.shape[-2:]
-
-            backbone_features, states, p = self.mdl.forward_backbone(x=ev_tensors,
-                                                                  previous_states=prev_states,
-                                                                  token_mask=token_masks)
-            P += sum(p) / sequence_len
-            prev_states = states
-
-            current_labels = [l for l in sparse_obj_labels[tidx].sparse_object_labels_batch]
-            obj_labels.extend(current_labels)
-            event_repr.extend(x[0] for x in ev_tensors.split(1))
-            backbone_feature_selector.add_backbone_features(backbone_features)
-
-        self.mode_2_rnn_states[mode].save_states_and_detach(worker_id=worker_id, states=prev_states)
-        # Batch the backbone features and labels to parallelize the detection code.
-        # selected_backbone_features = backbone_feature_selector.get_batched_backbone_features()
-
-        labels_yolox = ObjectLabels.get_labels_as_batched_tensor(obj_label_list=obj_labels, format_='yolox')
-        labels_yolox = labels_yolox.to(dtype=self.dtype)
-
-        selected_backbone_features = backbone_feature_selector.get_batched_backbone_features()
-        predictions, losses = self.mdl.forward_detect(backbone_features=selected_backbone_features,
-                                                      targets=labels_yolox)
+        batch_size = self.full_config.batch_size.train
+        losses, P, predictions, obj_labels, event_repr = self.step(data, batch_idx, mode, worker_id)
 
         if self.mode_2_sampling_mode[mode] in (DatasetSamplingMode.MIXED, DatasetSamplingMode.RANDOM):
             # We only want to evaluate the last batch_size samples if we use random sampling (or mixed).
@@ -188,12 +157,7 @@ class Module(pl.LightningModule):
             predictions = predictions[-batch_size:]
             obj_labels = obj_labels[-batch_size:]
 
-        pred_processed = postprocess(prediction=predictions,
-                                     num_classes=self.mdl_config.head.num_classes,
-                                     conf_thre=self.mdl_config.postprocess.confidence_threshold,
-                                     nms_thre=self.mdl_config.postprocess.nms_threshold)
-
-        loaded_labels_proph, yolox_preds_proph = to_prophesee(obj_labels, pred_processed)
+        pred_processed, gt_processed = self.convert_labels_for_logging(predictions, obj_labels)
 
         assert losses is not None
         assert 'loss' in losses
@@ -205,9 +169,9 @@ class Module(pl.LightningModule):
         self.trainer._logger_connector.progress_bar_metrics['STEP'] = self.trainer.global_step
         # For visualization, we only use the last batch_size items.
         output = {
-            ObjDetOutput.LABELS_PROPH: loaded_labels_proph[-batch_size:],
-            ObjDetOutput.PRED_PROPH: yolox_preds_proph[-batch_size:],
-            ObjDetOutput.EV_REPR: event_repr[-batch_size:],
+            ObjDetOutput.LABELS_PROPH: gt_processed[-batch_size:],
+            ObjDetOutput.PRED_PROPH: pred_processed[-batch_size:],
+            ObjDetOutput.EV_REPR: event_repr,
             ObjDetOutput.SKIP_VIZ: False,
             'loss': losses['loss']
         }
@@ -217,91 +181,36 @@ class Module(pl.LightningModule):
         log_dict = {f'{prefix}{k}': v for k, v in losses.items()}
         self.log_dict(log_dict, on_step=True, on_epoch=True, batch_size=batch_size, sync_dist=True)
 
-        if mode in self.mode_2_psee_evaluator and len(loaded_labels_proph) > 0:
-            self.mode_2_psee_evaluator[mode].add_labels(loaded_labels_proph)
-            self.mode_2_psee_evaluator[mode].add_predictions(yolox_preds_proph)
+        if mode in self.mode_2_psee_evaluator:
+            self.mode_2_psee_evaluator[mode].add_labels(gt_processed)
+            self.mode_2_psee_evaluator[mode].add_predictions(pred_processed)
             if self.train_metrics_config.detection_metrics_every_n_steps is not None and \
                     step > 0 and step % self.train_metrics_config.detection_metrics_every_n_steps == 0:
                 self.run_psee_evaluator(mode=mode)
         return output
 
-    def _val_test_step_impl(self, batch: Any, mode: Mode) -> Optional[STEP_OUTPUT]:
+    def validation_step(self, batch: Any, batch_idx: int) -> Optional[STEP_OUTPUT]:
+        mode = Mode.VAL
         data = self.get_data_from_batch(batch)
         worker_id = self.get_worker_id_from_batch(batch)
 
-        assert mode in (Mode.VAL, Mode.TEST)
-        ev_tensor_sequence = data[DataType.EV_REPR]
-        sparse_obj_labels = data[DataType.OBJLABELS_SEQ]
-        is_first_sample = data[DataType.IS_FIRST_SAMPLE]
+        losses, P, predictions, obj_labels, event_repr = self.step(data, batch_idx, mode, worker_id)
 
-        self.mode_2_rnn_states[mode].reset(worker_id=worker_id, indices_or_bool_tensor=is_first_sample)
+        pred_processed, gt_processed = self.convert_labels_for_logging(predictions, obj_labels)
 
-        sequence_len = len(ev_tensor_sequence)
-        assert sequence_len > 0
-        batch_size = len(sparse_obj_labels[0])
-        if self.mode_2_batch_size[mode] is None:
-            self.mode_2_batch_size[mode] = batch_size
-        else:
-            assert self.mode_2_batch_size[mode] == batch_size
-
-        prev_states = self.mode_2_rnn_states[mode].get_states(worker_id=worker_id)
-        obj_labels = list()
-        event_repr = list()
-
-        backbone_feature_selector = BackboneFeatureSelector()
-        for tidx in range(sequence_len):
-            collect_predictions = (tidx == sequence_len - 1) or \
-                                  (self.mode_2_sampling_mode[mode] == DatasetSamplingMode.STREAM)
-            ev_tensors = ev_tensor_sequence[tidx]
-            ev_tensors = ev_tensors.to(dtype=self.dtype)
-            ev_tensors = self.input_padder.pad_tensor_ev_repr(ev_tensors)
-            if self.mode_2_hw[mode] is None:
-                self.mode_2_hw[mode] = tuple(ev_tensors.shape[-2:])
-            else:
-                assert self.mode_2_hw[mode] == ev_tensors.shape[-2:]
-
-            backbone_features, states, _ = self.mdl.forward_backbone(x=ev_tensors, previous_states=prev_states)
-            prev_states = states
-
-            current_labels = [l for l in sparse_obj_labels[tidx].sparse_object_labels_batch]
-
-            obj_labels.extend(current_labels)
-            event_repr.extend(x[0] for x in ev_tensors.split(1))
-            backbone_feature_selector.add_backbone_features(backbone_features)
-
-        self.mode_2_rnn_states[mode].save_states_and_detach(worker_id=worker_id, states=prev_states)
-        if len(obj_labels) == 0:
-            return {ObjDetOutput.SKIP_VIZ: True}
-
-        labels_yolox = ObjectLabels.get_labels_as_batched_tensor(obj_label_list=obj_labels, format_='yolox')
-        labels_yolox = labels_yolox.to(dtype=self.dtype)
-
-        selected_backbone_features = backbone_feature_selector.get_batched_backbone_features()
-        predictions, losses = self.mdl.forward_detect(backbone_features=selected_backbone_features, targets=labels_yolox)
-
-        pred_processed = postprocess(prediction=predictions,
-                                     num_classes=self.mdl_config.head.num_classes,
-                                     conf_thre=self.mdl_config.postprocess.confidence_threshold,
-                                     nms_thre=self.mdl_config.postprocess.nms_threshold)
-
-        loaded_labels_proph, yolox_preds_proph = to_prophesee(obj_labels, pred_processed)
-        # For visualization, we only use the last item (per batch).
         output = {
-            ObjDetOutput.LABELS_PROPH: loaded_labels_proph[-1],
-            ObjDetOutput.PRED_PROPH: yolox_preds_proph[-1],
+            ObjDetOutput.LABELS_PROPH: gt_processed[-1],
+            ObjDetOutput.PRED_PROPH: pred_processed[-1],
             ObjDetOutput.EV_REPR: event_repr[-1],
             ObjDetOutput.SKIP_VIZ: False,
         }
 
         if self.started_training:
-            self.mode_2_psee_evaluator[mode].add_labels(loaded_labels_proph)
-            self.mode_2_psee_evaluator[mode].add_predictions(yolox_preds_proph)
+            self.mode_2_psee_evaluator[mode].add_labels(gt_processed)
+            self.mode_2_psee_evaluator[mode].add_predictions(pred_processed)
             self.val_losses.append(losses)
 
         return output
-
-    def validation_step(self, batch: Any, batch_idx: int) -> Optional[STEP_OUTPUT]:
-        return self._val_test_step_impl(batch=batch, mode=Mode.VAL)
 
     def test_step(self, batch: Any, batch_idx: int) -> Optional[STEP_OUTPUT]:
         return self._val_test_step_impl(batch=batch, mode=Mode.TEST)
@@ -316,8 +225,9 @@ class Module(pl.LightningModule):
         assert batch_size is not None
         assert hw_tuple is not None
         if psee_evaluator.has_data():
-            metrics = psee_evaluator.evaluate_buffer(img_height=hw_tuple[0],
-                                                     img_width=hw_tuple[1])
+            # print("has_data")
+            metrics = psee_evaluator.evaluate_buffer()
+            # print(f"{metrics=}")
             assert metrics is not None
 
             prefix = f'{mode_2_string[mode]}/'
@@ -427,7 +337,7 @@ class Module(pl.LightningModule):
 
         return accumulated_loss
 
-    def log_wanddb(self, log_dict):
+    def log_wandb(self, log_dict):
         step = self.trainer.global_step
         if dist.is_available() and dist.is_initialized():
             # We now have to manually sync (average the metrics) across processes in case of distributed training.
@@ -466,7 +376,7 @@ class Module(pl.LightningModule):
 
         log_dict = self.sum_losses(mode)
         self.log_dict(log_dict, on_step=False, on_epoch=True, batch_size=batch_size, sync_dist=True)
-        self.log_wanddb(log_dict)
+        self.log_wandb(log_dict)
         # clear losses list
         self.val_losses = []
 

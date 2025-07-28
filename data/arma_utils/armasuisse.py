@@ -20,6 +20,7 @@ from data.utils.types import DataType, LoaderDataDictGenX, DatasetMode
 from data.arma_utils.labels import ObjectLabelFactory
 from data.utils.object_labels import ObjectLabels
 from data.utils.sparsely_batched_object_labels import SparselyBatchedObjectLabels
+from data.base_dataset import BaseDataset
 
 class Sequence:
     def __init__(self, data_paths: List[Path], label_paths: List[Path]):
@@ -60,7 +61,7 @@ def create_sequences(path: Path, sequence_length: int):
 
     return seq_list
 
-class ArmasuisseDataset(Dataset):
+class ArmasuisseDataset(BaseDataset):
     def __init__(
             self, 
             path: Path,

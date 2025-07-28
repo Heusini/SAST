@@ -149,7 +149,6 @@ def main(config: DictConfig):
         fpn_dict = {k.replace("mdl.", ""): v 
                      for k, v in state_dict.items() if k.startswith("mdl.fpn.")}
 
-
         fpn_dict = {k.replace("mdl.", ""): v 
                      for k, v in state_dict.items() if k.startswith("mdl.fpn.")}
 
@@ -165,7 +164,6 @@ def main(config: DictConfig):
         # module.mdl.fpn.eval()
         ckpt_path = None
 
-    
     # print_layer_sizes(module)
     # summary(module, input_size=(4, 20, 384, 640))
     # sys.exit(0)

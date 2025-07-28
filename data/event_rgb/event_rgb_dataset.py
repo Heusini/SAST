@@ -112,7 +112,7 @@ class EventRGBDataset(Dataset):
             frame = frame[list(frame.keys())[0]]
             frame = torch.from_numpy(frame)
             frame = frame.permute(-1, 0, 1)
-            frame = frame.float() / 255.0
+            frame = frame / 255.0
             frames.append(frame)
 
 
