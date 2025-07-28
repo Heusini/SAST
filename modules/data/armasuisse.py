@@ -11,6 +11,7 @@ from tqdm import tqdm
 from data.general.augmented import AugmentedDataset
 from data.general.partial_dataset import PartialDataset
 from data.arma_utils.armasuisse import ArmasuisseDataset
+from data.base_dataset import BaseDataset
 
 
 
@@ -20,12 +21,15 @@ class ArmaDataModule(pl.LightningDataModule):
                  num_workers_train: int,
                  num_workers_eval: int,
                  batch_size_train: int,
-                 batch_size_eval: int):
+                 batch_size_eval: int,
+                 base_dataset: BaseDataset):
         super().__init__()
         assert num_workers_train >= 0
         assert num_workers_eval >= 0
         assert batch_size_train >= 1
         assert batch_size_eval >= 1
+
+        self.base_dataset = base_dataset
 
         self.num_workers_train = num_workers_train
         self.num_workers_eval = num_workers_eval
@@ -64,20 +68,20 @@ class ArmaDataModule(pl.LightningDataModule):
         percent_train = self.dataset_config.train.use_fraction
         percent_val = self.dataset_config.validation.use_fraction
         if stage == 'fit':
-            train_dataset = ArmasuisseDataset.build(dataset_mode=DatasetMode.TRAIN, 
+            train_dataset = self.base_dataset.build(dataset_mode=DatasetMode.TRAIN, 
                                                           dataset_config=self.dataset_config)
             train_dataset = PartialDataset(train_dataset, percent_train)
             if self.dataset_config.data_augmentation:
                 train_dataset = AugmentedDataset.build(dataset_config=self.dataset_config, dataset=train_dataset)
             self.sampling_mode_2_dataset[DatasetSamplingMode.RANDOM] = train_dataset
             
-            validation_dataset = ArmasuisseDataset.build(dataset_mode=DatasetMode.VALIDATION, 
+            validation_dataset = self.base_dataset.build(dataset_mode=DatasetMode.VALIDATION, 
                                                               dataset_config=self.dataset_config)
             validation_dataset = PartialDataset(validation_dataset, percent_val) 
             self.validation_dataset = validation_dataset
 
         elif stage == 'validate':
-            self.validation_dataset = ArmasuisseDataset.build(dataset_mode=DatasetMode.VALIDATION,
+            self.validation_dataset = self.base_dataset.build(dataset_mode=DatasetMode.VALIDATION,
                                                               dataset_config=self.dataset_config)
         elif stage == 'test':
             print("test")
@@ -108,19 +112,3 @@ class ArmaDataModule(pl.LightningDataModule):
                           pin_memory=True,
                           drop_last=True,
                           collate_fn=custom_collate_rnd)
-
-
-
-
-def build_random_access_dataset_arma(dataset_mode: DatasetMode, dataset_config: DictConfig):
-    dataset_path = Path(dataset_config.path)
-    assert dataset_path.is_dir(), f'{str(dataset_path)}'
-    mode2str = {DatasetMode.TRAIN: 'train',
-                DatasetMode.VALIDATION: 'val',
-                DatasetMode.TESTING: 'test'}
-
-    dataset = build_arma(mode2str[dataset_mode], dataset_config)
-
-    return dataset
-    # for entry in tqdm(split_path.iterdir(), desc=f'creating rnd access {mode2str[dataset_mode]} datasets'):
-    #     print(entry)
