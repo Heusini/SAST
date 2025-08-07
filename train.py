@@ -136,7 +136,7 @@ def main(config: DictConfig):
     # ---------------------
     # Model
     # ---------------------
-    ckpt_path = config.ckpt.path
+    ckpt_path = config.checkpoint
     module = fetch_model_module(config=config)
     # if ckpt_path is not None and config.wandb.wandb.resume_only_weights:
     if ckpt_path:
@@ -144,16 +144,16 @@ def main(config: DictConfig):
         ckpt = torch.load(ckpt_path, map_location='cpu')
         state_dict = ckpt["state_dict"]
 
-        backbone_dict = {k.replace("mdl.", ""): v 
-                     for k, v in state_dict.items() if k.startswith("mdl.backbone.")}
-        fpn_dict = {k.replace("mdl.", ""): v 
-                     for k, v in state_dict.items() if k.startswith("mdl.fpn.")}
+        backbone_str = "mdl.backbone."
+        backbone_dict = {k.replace(backbone_str, ""): v 
+                     for k, v in state_dict.items() if k.startswith(backbone_str)}
 
-        fpn_dict = {k.replace("mdl.", ""): v 
-                     for k, v in state_dict.items() if k.startswith("mdl.fpn.")}
+        fpn_str = "mdl.fpn."
+        fpn_dict = {k.replace(fpn_str, ""): v 
+                     for k, v in state_dict.items() if k.startswith(fpn_str)}
 
-        module.mdl.backbone.load_state_dict(backbone_dict, strict=False)
-        module.mdl.fpn.load_state_dict(fpn_dict, strict=False)
+        module.mdl.backbone.load_state_dict(backbone_dict, strict=True)
+        module.mdl.fpn.load_state_dict(fpn_dict, strict=True)
         # for param in module.mdl.backbone.parameters():
         #     param.requires_grad = False
 
