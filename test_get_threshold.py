@@ -35,52 +35,44 @@ from models.detection.yolox.utils.boxes import postprocess
 
 import matplotlib.pyplot as plt
 
-def draw_plot(image, mask):
-    img = image
-    if len(image.shape) == 4:
-        img = np.sum(img, axis=0)
-    img = np.sum(img, axis=0)
-    new_mask = np.concatenate(mask)
-    new_mask = new_mask.reshape((384, 640))
-    mask_normalized = (new_mask-new_mask.min()) / (new_mask.max() - new_mask.min())
-
-    plt.imshow(img)
-    # plt.imshow(np.zeros_like(img), alpha=0)
-    # plt.imshow(np.dstack((np.ones_like(mask_normalized),
-    #                       np.zeros_like(mask_normalized),
-    #                       np.zeros_like(mask_normalized),
-    #                       )),
-    #            alpha=mask_normalized)
-    plt.show()
-
-
-def xy_from_index(index, height, width):
-    y = index // width
-    x = index - (width * y)
-
-    return x, y
-
 HEIGHT = 384
 WIDTH = 640
+def apply_sparsity_mask(img, sparsity_mask, alpha = 0.5): 
+    # a lot of magic numbers -> change somehow
+    patch_size = int(np.sqrt((img.shape[0] * img.shape[1])/sparsity_mask.shape[0]))
+    sp_mask = sparsity_mask.reshape(img.shape[0]//patch_size, img.shape[1]//patch_size)
+    print(f"{sp_mask.shape=}")
+    sp_mask = np.kron(sp_mask, np.ones((patch_size, patch_size), dtype=sparsity_mask.dtype))
+    print(f"{sp_mask.shape=}")
+    mask_img = np.zeros_like(img)
+    # mask_img[:, :, 3][sp_mask] = 255
+    mask_img[:, :, 2][sp_mask] = 255
+    img = cv2.addWeighted(mask_img, alpha, img, 1-alpha, 0)
 
-def draw_and_display(img_data, masks, bboxes,image = None,predictions =None, window_name='window'):
-    height, width = masks.shape
-    size = HEIGHT // masks.shape[0]
+    return img
+
+def draw_boxes(img, bboxes, color = (255, 255, 255)):
+    for box in bboxes:
+        new_bb = box.numpy().copy()
+        new_bb[2:] += new_bb[:2]
+        new_bb = new_bb.astype(np.int32)
+        img = bbv.draw_rectangle(img, new_bb, thickness=1, bbox_color=color)
+
+    return img
+
+def draw_and_display(img_data, tokens, mask, bboxes,image = None,predictions =None, window_name='window'):
+    height, width = tokens.shape
+    print(height, width)
     img = img_data
     if len(img_data.shape) == 4:
         img = np.sum(img, axis=0)
     img = np.sum(img, axis=0)
 
     img = cv2.applyColorMap(cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8), cv2.COLORMAP_JET)
+    # img = cv2.cvtColor(img,cv2.COLOR_BGR2BGRA)
 
-    mask_color = np.zeros((size, size, 3), dtype=np.uint8)
-    mask_color[:, :, 2] = 255
+    img = apply_sparsity_mask(img, mask)
 
-    if bboxes is not None:
-        new_bb = bboxes
-        new_bb[:, 2:] += new_bb[:, :2]
-        new_bb = new_bb.astype(np.int32)
-        img = bbv.draw_multiple_rectangles(img, new_bb.tolist(), thickness=2)
     if predictions is not None:
         new_pred = []
         for p in predictions:
@@ -97,29 +89,29 @@ def draw_and_display(img_data, masks, bboxes,image = None,predictions =None, win
         if len(new_pred) > 0:
             img = bbv.draw_multiple_rectangles(img, new_pred, bbox_color=(0,0,255), thickness=1)
 
-    for y_i in range(height):
-        for x_i in range(width):
-            alpha = masks[y_i][x_i]
-            x = x_i * size
-            y = y_i * size
-            img[y:y+size, x:x+size] = cv2.addWeighted(mask_color, alpha, img[y:y+size, x:x+size], 1-alpha, 0)
-
     y_repeat = int(np.ceil(HEIGHT/ height))
     x_repeat = int(np.ceil(WIDTH / width))
 
-    heatmap = np.repeat(np.repeat(masks * 255, y_repeat, axis=0), x_repeat, axis=1)
+
+    heatmap = np.zeros((HEIGHT, WIDTH))
+    heatmap = np.repeat(np.repeat(tokens, y_repeat, axis=0), x_repeat, axis=1) * 255
     heatmap = heatmap.astype(np.uint8)
     heatmap = cv2.applyColorMap(cv2.normalize(heatmap, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8), cv2.COLORMAP_JET)
 
-    # img = cv2.resize(img, (1280, 720), interpolation=cv2.INTER_LINEAR)
+
+    img = draw_boxes(img, bboxes)
+    heatmap = draw_boxes(heatmap, bboxes)
+
     out_img = np.hstack([img, heatmap])
     if image is not None:
         image = image.squeeze(0).permute(1,2,0).numpy()
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        # image = cv2.cvtColor(image, cv2.COLOR_)
         image = image * 255
         image = image.astype(np.uint8)
+        print(f"{image.shape=}")
+        print(f"{out_img.shape=}")
         if bboxes is not None:
-            image = bbv.draw_multiple_rectangles(image, new_bb.tolist(), thickness=2)
+            image = draw_boxes(image, bboxes)
         if predictions is not None:
             if len(new_pred) > 0:
                 image = bbv.draw_multiple_rectangles(image, new_pred, thickness=1, bbox_color=(0, 0, 255))
@@ -127,48 +119,14 @@ def draw_and_display(img_data, masks, bboxes,image = None,predictions =None, win
         out_img = np.hstack([out_img, image])
     cv2.imshow(window_name, out_img)
 
-def draw_and_wait(img_data, masks = None, bboxes = None):
-    draw_and_display(img_data, masks, bboxes)
+def map_tokens_to_image(frame, tokens, mask, bboxes, image=None, predictions=None):
+    # current_token = np.sum(tokens[sf][0].numpy(), axis=0)
+    draw_and_display(frame, tokens.numpy(), mask, bboxes, image, predictions)
     if cv2.waitKey(0) == ord("q"):
         cv2.destroyAllWindows()
         sys.exit(0)
 
-def map_tokens_to_image(frame, tokens, bboxes, image=None, predictions=None):
-    print(frame.shape)
-    sf = 0
-    print(f"{tokens[sf].shape=}")
-    # current_token = np.sum(tokens[sf][0].numpy(), axis=0)
-
-    current_token = torch.norm(tokens[sf][0], dim=0)
-    print(current_token.shape)
-    min_val = current_token.min()
-    max_val = current_token.max()
-    normalized_scores = (current_token - min_val) / (max_val - min_val + 1e-8)
-    draw_and_display(frame, normalized_scores.numpy(), bboxes, image, predictions)
-    if cv2.waitKey(500) == ord("q"):
-        cv2.destroyAllWindows()
-        sys.exit(0)
-    # draw_plot(frame, masks)
-def get_sparsity_mask(fpn_layer: torch.Tensor, threshold = 0.7):
-    tokens = torch.norm(fpn_layer, dim=1)
-
-    max_pool = nn.MaxPool2d(2,2)
-    min_val = tokens.amin(dim=(-2, -1), keepdim=True)
-    max_val = tokens.amax(dim=(-2, -1), keepdim=True)
-    tokens = (tokens - min_val) / (max_val-min_val + 1e-8)
-    # tokens = max_pool(tokens)
-    # print(f"{tokens.shape=}")
-
-    mask = tokens < threshold
-    # print(f"{mask=}")
-
-    data = torch.ones((mask.shape))
-    # print(f"{data}")
-    data.masked_fill_(mask, float(0))
-    # print(f"{data}")
-    return tokens
-
-@hydra.main(config_path='config', config_name='val', version_base='1.2')
+@hydra.main(config_path='config', config_name='train', version_base='1.2')
 def main(config: DictConfig):
     dynamically_modify_train_config(config)
     # Just to check whether config can be resolved
@@ -198,13 +156,10 @@ def main(config: DictConfig):
     # ---------------------
     
     module = fetch_model_module(config=config)
-    # module = module.load_from_checkpoint(str(ckpt_path), **{'full_config': config}, strict=True)
     ckpt = torch.load(ckpt_path, map_location='cpu')
     state_dict = ckpt["state_dict"]
     backbone_dict = {k.replace("mdl.backbone.", ""): v 
                  for k, v in state_dict.items() if k.startswith("mdl.backbone.")}
-    for k in backbone_dict.keys():
-        print(k)
     
     fpn_dict = {k.replace("mdl.fpn.", ""): v 
                  for k, v in state_dict.items() if k.startswith("mdl.fpn.")}
@@ -218,9 +173,10 @@ def main(config: DictConfig):
         param.requires_grad = False
 
     module.eval()
+
     # Get a batch (or a single sample wrapped as batch)
-    data_module.setup('validate')
-    val_loader = data_module.val_dataloader()
+    data_module.setup('fit')
+    val_loader = data_module.train_dataloader()
 
     in_res_hw = tuple(config.model.backbone.in_res_hw)
     input_padder = InputPadderFromShape(desired_hw=in_res_hw)
@@ -236,43 +192,52 @@ def main(config: DictConfig):
                 ev_tensor_sequence = data[DataType.EV_REPR]
                 sparse_obj_labels = data[DataType.OBJLABELS_SEQ]
                 is_first_sample = data[DataType.IS_FIRST_SAMPLE]
-                image = None
-                if DataType.IMAGE in data.keys():
-                    data_image = data[DataType.IMAGE]
+                image = data.get(DataType.IMAGE)
                 token_mask_sequence = data.get(DataType.TOKEN_MASK, None)
                 sequence_len = len(ev_tensor_sequence)
                 batch_size = ev_tensor_sequence[0].shape[0]
+                print(f"{batch_size=}")
                 for tidx in range(sequence_len):
                     ev_tensors = ev_tensor_sequence[tidx]
                     ev_tensors = input_padder.pad_tensor_ev_repr(ev_tensors)
-                    image = input_padder.pad_tensor_ev_repr(data_image[tidx])
-                    bboxes = sparse_obj_labels[tidx][0]
-                    new_bbs = None
-                    if bboxes:
-                        new_bb = bboxes.object_labels[:, 1:5]
-                        new_bbs = np.vstack(new_bb)
+                    bboxes = sparse_obj_labels[tidx]
+                    bb_list = []
+                    for box in bboxes:
+                        new_bb = box.object_labels[:, 1:5]
+                        new_bbs = []
+                        for bb in new_bb:
+                            new_bbs.append(bb)
+                        bb_list.append(new_bbs)
 
                     preds, _, _ = module.mdl.backbone(ev_tensors)
                     # for i in range(len(preds)):
                     #     print(preds[i].shape)
-                    preds = module.mdl.fpn(preds)
-                    rgb_preds = module.mdl.rgb_fpn(image)
-                    features = []
-                    for f, r in zip(preds, rgb_preds):
-                        intermediate_features = torch.add(f, r)
-                        features.append(intermediate_features)
+                    fpn_layers = module.mdl.fpn(preds)
+                    for layer in fpn_layers:
+                        print(f"{layer.shape=}")
 
-                    output, _ = module.mdl.yolox_head(features)
-                    pred_processed = postprocess(prediction=output,
-                                                 num_classes=mdl_config.head.num_classes,
-                                                 conf_thre=mdl_config.postprocess.confidence_threshold,
-                                                 nms_thre=mdl_config.postprocess.nms_threshold)
-                    print(pred_processed)
-                    print(new_bbs)
+                    tokens = module.mdl.get_sparsity_mask(fpn_layers[1])
+                    print(tokens.shape)
+                    sparsity_mask = tokens > 0.15
+                    # max = np.max((sparsity_mask.shape[-1], sparsity_mask.shape[-2]))
+                    # sparsity_mask, pad = InputPadderFromShape._pad_tensor_impl(sparsity_mask, (max, max), mode='constant', value=False)
+                    sparsity_mask = sparsity_mask.flatten(1,2)
+                    # sparsity_mask = np.ones_like(sparsity_mask)
+                    sparsity_mask = sparsity_mask.numpy()
+                    print(f"{sparsity_mask.shape=}")
+
                     # for i in range(len(preds)):
                     #     preds[i] = max_pool(preds[i])
                     # preds = [preds[i] for i in [1, 2, 3, 4]]
-                    map_tokens_to_image(ev_tensors.numpy(), preds, new_bbs, image, pred_processed)
+                    img = None
+                    if image is not None:
+                        img = image[tidx]
+                        img = input_padder.pad_tensor_ev_repr(img)
+                        print(f"{img.shape=}")
+                    predictions = None
+                    print(f"{bb_list=}")
+                    for i in range(batch_size):
+                        map_tokens_to_image(ev_tensors[i].numpy(), tokens[i], sparsity_mask[i], bb_list[i], img[i], predictions)
 
 if __name__ == '__main__':
     # torch.multiprocessing.set_start_method('spawn')

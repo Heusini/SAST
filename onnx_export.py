@@ -64,7 +64,7 @@ def main(config: DictConfig):
     # ---------------------
     
     module = fetch_model_module(config=config)
-    module = module.load_from_checkpoint(str(ckpt_path), **{'full_config': config}, strict=True)
+    # module = module.load_from_checkpoint(str(ckpt_path), **{'full_config': config}, strict=True)
 
     in_res_hw = tuple(config.model.backbone.in_res_hw)
     input_padder = InputPadderFromShape(desired_hw=in_res_hw)
@@ -77,7 +77,8 @@ def main(config: DictConfig):
     ev_tensors = input_padder.pad_tensor_ev_repr(ev_tensors)
     input_sample = ev_tensors
     print(input_sample.shape)
-    module.to_onnx("SAST.onnx", input_sample, export_params=True)
+    # module.to_onnx("SAST.onnx", input_sample, export_params=True)
+    onnx_model = torch.onnx.export(module, input_sample, dynamo=True)
 
 
 
