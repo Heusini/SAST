@@ -2,6 +2,7 @@ from typing import Dict, Optional, Tuple, Union
 import sys
 
 import torch as th
+import torch.nn as nn
 from omegaconf import DictConfig
 
 try:
@@ -33,6 +34,8 @@ class LWDETRDetector(th.nn.Module):
         in_channels = self.backbone.get_stage_dims(fpn_cfg.in_stages)
         self.fpn = build_yolox_fpn(fpn_cfg, in_channels=in_channels)
 
+        self.max_pool = nn.MaxPool2d(2, 2)
+
         strides = self.backbone.get_strides(fpn_cfg.in_stages)
         self.lwdetr, self.criterion, self.postprocessors = build_lwdetr(head_cfg)
 
@@ -50,47 +53,22 @@ class LWDETRDetector(th.nn.Module):
 
         with CudaTimer(device=device, timer_name="FPN"):
             fpn_features = self.fpn(backbone_features)
-
+        # print(f"{len(fpn_features)=}")
+        # print(f"{fpn_features[0].shape=}")
         return fpn_features
 
-    # moved conversion to object_labels can maybe remove but validation of 
-    # lwdetr format in object labels has to be done
-    def lw_deter_labels(self, targets, im_h, im_w):
-        # This function could be possibly done nicer
-        # our dataloader outputs torch.empty((0,5)) for empty data
-        # lw deter expects torch.empty(0) the target["labels"] if there is no label at all(in none of the batches)
-        # if there are some empty lables (not all the empty labels and boxes are removed)
+    def get_sparsity_mask(self, fpn_layer: th.Tensor, threshold = 0.7):
+        tokens = fpn_layer
+        tokens = th.norm(tokens, dim=1)
+        min_val = tokens.amin(dim=(-2, -1), keepdim=True)
+        max_val = tokens.amax(dim=(-2, -1), keepdim=True)
 
-        new_targets = []
-        h, w = im_h, im_w
-        for image_id, gt in enumerate(targets):
-            im_id = image_id + 1
-            target = {}
-            if targets.nelement() == 0:
-                target["boxes"] = th.empty((0,4), device=gt.device)
-                target["labels"] = th.empty(0,dtype=th.int64, device=gt.device)
-                target["image_id"] = th.tensor(im_id, device=gt.device) 
-                target["orig_size"] = th.as_tensor([int(h), int(w)])
-                target["size"] = th.as_tensor([int(h), int(w)])
-                new_targets.append(target)
-            else:
-                h,w = gt[0, 3:5]
-                boxes = gt[:, 1:5]
-                boxes[:, 2:] += boxes[:, :2]
-                boxes = box_xyxy_to_cxcywh(boxes)
-                boxes = boxes / th.tensor([im_w, im_h, im_w, im_h], device=gt.device)
-                non_empty_mask = ~(boxes == 0).all(dim=1)
-                boxes = boxes[non_empty_mask]
-                labels = gt[:, 0].int()[non_empty_mask]
-                target["boxes"] = boxes
-                target["labels"] = labels
-                target["image_id"] = th.tensor(im_id, device=gt.device) 
-                target["orig_size"] = th.as_tensor([int(h), int(w)])
-                target["size"] = th.as_tensor([int(h), int(w)])
+        tokens = (tokens - min_val) / (max_val-min_val + 1e-8)
+        if self.max_pool is not None:
+            tokens = self.max_pool(tokens)
+        #     print("max_pool")
 
-                new_targets.append(target)
-        return new_targets
-
+        return tokens
 
     def forward_detect(self,
                        event_frame: th.Tensor,
@@ -101,13 +79,23 @@ class LWDETRDetector(th.nn.Module):
 
         device = next(iter(event_frame)).device
         dtype = next(self.parameters()).dtype
+        # print(f"{len(event_frame)=}")
+        # print(f"{event_frame[0].shape=}")
         event_frame = th.vstack(event_frame).to(dtype)
+        # print(f"{event_frame.shape=}")
         with CudaTimer(device=device, timer_name="HEAD + Loss"):
             outputs = self.lwdetr(event_frame, sparsity_mask, targets)
 
         loss_dict = self.criterion(outputs, targets)
+        predictions = self.postprocessors['bbox'](outputs)
+        weight_dict = self.criterion.weight_dict
 
-        return outputs, loss_dict
+        loss = sum(
+            loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict
+        )
+        loss_dict['loss'] = loss
+
+        return predictions, loss_dict
 
     def forward(self,
                 x: th.Tensor,

@@ -470,16 +470,15 @@ class NestedTensor(object):
 
 
 def nested_tensor_from_tensor_list(tensor_list: List[Tensor]):
-    # TODO make this more general
-    # checks if the first tensor in the tensor list has dim=3
     max = np.max((tensor_list.shape[-1], tensor_list.shape[-2]))
     B, C, H, W = tensor_list.shape
-    ev_tensors, pad = InputPadderFromShape._pad_tensor_impl(tensor_list, (max, max), mode='constant', value=0)
-    mask = torch.ones((B, H, W),dtype=bool, device=ev_tensors.device)
+    # change those read from sast config maybe
+    HEIGHT = 384
+    WIDTH = 640 
+    ev_tensors, pad = InputPadderFromShape._pad_tensor_impl(tensor_list, (HEIGHT, WIDTH), mode='constant', value=0)
+    mask = torch.zeros((B, H, W), dtype=bool, device=ev_tensors.device)
     left, right, top, bottom = pad
     mask = F.pad(mask, (left, right, top, bottom), mode='constant', value=True)
-    # print(f"{ev_tensors.shape=}")
-
     return NestedTensor(ev_tensors, mask)
 
 

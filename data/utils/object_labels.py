@@ -152,7 +152,6 @@ class ObjectLabels(ObjectLabelBase):
     def get_labels_as_tensors(self, format_: str = 'yolox') -> th.Tensor:
         self._assert_not_numpy()
 
-        h, w = self.input_size_hw
         if format_ == 'yolox':
             out = th.zeros((len(self), 5), dtype=th.float32, device=self.device)
             if len(self) == 0:
@@ -163,21 +162,23 @@ class ObjectLabels(ObjectLabelBase):
             out[:, 3] = self.w
             out[:, 4] = self.h
             return out
-        elif format_ == 'lwdetr':
-            target = {}
-            boxes = th.zeros((len(self), 4), device=self.device)
-            boxes[:, 0] = self.x
-            boxes[:, 1] = self.y
-            boxes[:, 2] = self.w
-            boxes[:, 3] = self.h
-            boxes = boxes / th.tensor([w, h, w, h], device=self.device)
-            labels = th.zeros(len(self), dtype=th.int32, device=self.device)
-            labels[:] = self.class_id.int()
-            target["boxes"] = boxes
-            target["labels"] = labels
-            return target
         else:
             raise NotImplementedError
+
+    def get_labels_lwdetr_normalized(self, size:Tuple[int, int]) -> th.Tensor:
+        h, w = size
+        target = {}
+        boxes = th.zeros((len(self), 4), device=self.device)
+        boxes[:, 0] = self.x + self.w / 2
+        boxes[:, 1] = self.y + self.h / 2
+        boxes[:, 2] = self.w
+        boxes[:, 3] = self.h
+        boxes = boxes / th.tensor([w, h, w, h], device=self.device)
+        labels = th.zeros(len(self), dtype=th.int32, device=self.device)
+        labels[:] = self.class_id.int()
+        target["boxes"] = boxes
+        target["labels"] = labels
+        return target
 
     def get_labels(self) -> th.Tensor:
         out = th.zeros((len(self), 5), device=self.device)
@@ -188,8 +189,7 @@ class ObjectLabels(ObjectLabelBase):
         out[:, 2] = self.y
         out[:, 3] = self.w
         out[:, 4] = self.h
-        else:
-            raise NotImplementedError
+        return out
 
     def get_labels_xyxy(self) -> th.Tensor:
         out = th.zeros((len(self), 5), device=self.device)
@@ -201,6 +201,9 @@ class ObjectLabels(ObjectLabelBase):
         out[:, 3] = self.y + self.h
         out[:, 4] = self.class_id
         return out
+
+    def get_labels_cxcywh(self) -> th.Tensor:
+        raise NotImplementedError
 
     @staticmethod
     def get_labels_as_batched_tensor(obj_label_list: List[ObjectLabels], format_: str = 'yolox') -> th.Tensor:
@@ -223,7 +226,7 @@ class ObjectLabels(ObjectLabelBase):
             return tensor_labels
         elif format_ == 'lwdetr':
             for labels in obj_label_list:
-                obj_labels_coco = labels.get_labels_as_tensors(format_=format_)
+                obj_labels_coco = labels.get_labels_lwdetr_normalized((384, 640))
                 obj_labels_coco["image_id"] = count
                 tensor_labels.append(obj_labels_coco)
                 count += 1

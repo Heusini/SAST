@@ -16,6 +16,7 @@
 """
 LW-DETR model and criterion classes
 """
+import sys
 import copy
 import math
 from typing import Callable
@@ -665,7 +666,11 @@ def build(args):
                     model_without_ddp.state_dict()[modify_key_to_load],
                     checkpoint["model"][modify_key_to_load],
                 )
-        model_without_ddp.load_state_dict(checkpoint["model"], strict=False)
+        load_result = model_without_ddp.load_state_dict(checkpoint["model"], strict=False)
+        if len(load_result.unexpected_keys) > 0:
+            print("Not all keys that were given for the modle match the model pls investigate")
+            sys.exit(1)
+
         if args.use_ema:
             # del ema_m
             ema_m = ModelEma(model_without_ddp)

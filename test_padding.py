@@ -36,6 +36,8 @@ import torch.nn.functional as F
 
 import matplotlib.pyplot as plt
 
+from util.misc import nested_tensor_from_tensor_list
+
 def draw_plot(image, mask):
     img = image
     if len(image.shape) == 4:
@@ -200,7 +202,7 @@ def main(config: DictConfig):
     # ---------------------
     
     module = fetch_model_module(config=config)
-    module = module.load_from_checkpoint(str(ckpt_path), **{'full_config': config}, strict=True)
+    # module = module.load_from_checkpoint(str(ckpt_path), **{'full_config': config}, strict=True)
 
     module.eval()
     # Get a batch (or a single sample wrapped as batch)
@@ -226,24 +228,14 @@ def main(config: DictConfig):
                 batch_size = ev_tensor_sequence[0].shape[0]
                 for tidx in range(sequence_len):
                     ev_tensors = ev_tensor_sequence[tidx]
-                    img = image[tidx]
-                    print(f"{img.shape=}")
-                    # ev_tensors = input_padder.pad_tensor_ev_repr(ev_tensors)
-                    B, C, H, W = ev_tensors.shape
-                    ev_tensors, pad = InputPadderFromShape._pad_tensor_impl(img, (640, 640), mode='constant', value=0)
-                    mask = torch.zeros((B, H, W), dtype=th.float32, device=ev_tensors.device)
-
-                    # Pad with 1s in padded areas
-                    left, right, top, bottom = pad
-                    pad_mask = F.pad(mask, (left, right, top, bottom), mode='constant', value=1)
-                    print(f"{pad_mask.shape=}")
-                    print(f"{pad_mask=}")
+                    # img = image[tidx]
+                    nested_tensor = nested_tensor_from_tensor_list(ev_tensors)
                     bboxes = sparse_obj_labels[tidx][0]
                     new_bbs = None
                     if bboxes:
                         new_bb = bboxes.object_labels[:, 1:5]
                         new_bbs = np.vstack(new_bb)
-                    draw_and_wait(ev_tensors.numpy(), pad_mask.numpy(), bboxes=new_bbs)
+                    draw_and_wait(nested_tensor.tensors.numpy(), nested_tensor.mask.numpy(), bboxes=new_bbs)
 
 
 if __name__ == '__main__':
