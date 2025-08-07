@@ -3,9 +3,10 @@ from typing import Any
 from modules.utils.detection import Mode, BackboneFeatureSelector
 from data.utils.object_labels import ObjectLabels
 from data.utils.types import DataType
+from models.detection.yolox.utils.boxes import postprocess
+from data.utils.types import ModelOutput
 
 def step(self, data: Any, batch_idx: int, mode: Mode, worker_id):
-    self.started_training = True
     step = self.trainer.global_step
     ev_tensor_sequence = data[DataType.EV_REPR]
     sparse_obj_labels = data[DataType.OBJLABELS_SEQ]
@@ -67,4 +68,17 @@ def step(self, data: Any, batch_idx: int, mode: Mode, worker_id):
     predictions, losses = self.mdl.forward_detect(backbone_features=selected_backbone_features, rgb_image=image_sequence,
                                                   targets=labels_yolox)
 
-    return losses, P, predictions, obj_labels, event_repr[-batch_size:]
+    predictions = postprocess(prediction=predictions,
+                                 num_classes=self.mdl_config.head.num_classes,
+                                 conf_thre=self.mdl_config.postprocess.confidence_threshold,
+                                 nms_thre=self.mdl_config.postprocess.nms_threshold)
+
+    output = {
+            ModelOutput.PREDICTIONS: predictions,
+            ModelOutput.LOSSES: losses,
+            ModelOutput.GROUND_TRUTHS: obj_labels,
+            ModelOutput.IMAGE_DATA: image_sequence,
+            ModelOutput.EVENT_DATA: event_repr[-batch_size:],
+    }
+
+    return output

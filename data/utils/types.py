@@ -48,8 +48,19 @@ class ObjDetOutput(Enum):
     LABELS_PROPH = auto()
     PRED_PROPH = auto()
     EV_REPR = auto()
+    SPARSITY_MASK = auto()
+    IMAGE_DATA = auto()
     SKIP_VIZ = auto()
     R_L = auto()
+
+class ModelOutput(Enum):
+    LOSSES = auto()
+    P = auto()
+    PREDICTIONS = auto()
+    GROUND_TRUTHS = auto()
+    EVENT_DATA = auto()
+    SPARSITY_MASK = auto()
+    IMAGE_DATA = auto()
 
 
 LoaderDataDictGenX = Dict[DataType, Union[List[th.Tensor], ObjectLabels, SparselyBatchedObjectLabels, List[bool]]]

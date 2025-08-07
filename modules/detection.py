@@ -12,7 +12,7 @@ from omegaconf import DictConfig
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 
 from data.utils.object_labels import ObjectLabels
-from data.utils.types import DataType, LstmStates, ObjDetOutput, DatasetSamplingMode, BackboneFeatures
+from data.utils.types import DataType, LstmStates, ObjDetOutput, DatasetSamplingMode, BackboneFeatures, ModelOutput
 from models.detection.yolox.utils.boxes import postprocess
 from models.detection.yolox_extension.models.detector import YoloXDetector
 from utils.evaluation.prophesee.evaluator import PropheseeEvaluator
@@ -127,21 +127,16 @@ class Module(pl.LightningModule):
 
 
     def convert_labels_for_logging(self, predictions, obj_labels):
-        pred_processed = postprocess(prediction=predictions,
-                                     num_classes=self.mdl_config.head.num_classes,
-                                     conf_thre=self.mdl_config.postprocess.confidence_threshold,
-                                     nms_thre=self.mdl_config.postprocess.nms_threshold)
-
-        
         # get labels in xyxy format
         gt_labels = [gt.get_labels_xyxy().detach().cpu().numpy() for gt in obj_labels]
         # boxes are in xyxy format
-        pred_processed = [np.empty((0,7)) if pred is None else pred.detach().cpu().numpy() for pred in pred_processed]
+        pred_processed = [np.empty((0,7)) if pred is None else pred.detach().cpu().numpy() for pred in predictions]
 
         return pred_processed, gt_labels
 
 
     def training_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
+        self.started_training = True
         mode = Mode.TRAIN
         batch = merge_mixed_batches(batch)
         data = self.get_data_from_batch(batch)
@@ -149,7 +144,11 @@ class Module(pl.LightningModule):
         step = self.trainer.global_step
 
         batch_size = self.full_config.batch_size.train
-        losses, P, predictions, obj_labels, event_repr = self.step(data, batch_idx, mode, worker_id)
+        model_output = self.step(data, batch_idx, mode, worker_id)
+
+        predictions = model_output[ModelOutput.PREDICTIONS]
+        obj_labels = model_output[ModelOutput.GROUND_TRUTHS]
+        losses = model_output[ModelOutput.LOSSES]
 
         if self.mode_2_sampling_mode[mode] in (DatasetSamplingMode.MIXED, DatasetSamplingMode.RANDOM):
             # We only want to evaluate the last batch_size samples if we use random sampling (or mixed).
@@ -158,20 +157,33 @@ class Module(pl.LightningModule):
             obj_labels = obj_labels[-batch_size:]
 
         pred_processed, gt_processed = self.convert_labels_for_logging(predictions, obj_labels)
+        # print(f"{pred_processed=}")
+        # print(f"{gt_processed=}")
 
         assert losses is not None
         assert 'loss' in losses
 
-        self.smooth_loss(P, 3)
+        # self.smooth_loss(P, 3)
 
-        self.trainer._logger_connector.progress_bar_metrics['SN'] = self.p_loss // 1
-        self.trainer._logger_connector.progress_bar_metrics['N'] = P // 1
+        # self.trainer._logger_connector.progress_bar_metrics['SN'] = self.p_loss // 1
+        # self.trainer._logger_connector.progress_bar_metrics['N'] = P // 1
         self.trainer._logger_connector.progress_bar_metrics['STEP'] = self.trainer.global_step
+
         # For visualization, we only use the last batch_size items.
+        sparsity_mask = model_output.get(ModelOutput.SPARSITY_MASK)
+        if sparsity_mask is not None:
+            sparsity_mask = sparsity_mask.detach().cpu().numpy()
+            sparsity_mask = sparsity_mask[-batch_size:]
+
+        event_repr = model_output.get(ModelOutput.EVENT_DATA)
+        image_data = model_output.get(ModelOutput.IMAGE_DATA)
+
         output = {
             ObjDetOutput.LABELS_PROPH: gt_processed[-batch_size:],
             ObjDetOutput.PRED_PROPH: pred_processed[-batch_size:],
+            ObjDetOutput.SPARSITY_MASK: sparsity_mask,
             ObjDetOutput.EV_REPR: event_repr,
+            ObjDetOutput.IMAGE_DATA: image_data,
             ObjDetOutput.SKIP_VIZ: False,
             'loss': losses['loss']
         }
@@ -194,14 +206,32 @@ class Module(pl.LightningModule):
         data = self.get_data_from_batch(batch)
         worker_id = self.get_worker_id_from_batch(batch)
 
-        losses, P, predictions, obj_labels, event_repr = self.step(data, batch_idx, mode, worker_id)
+        model_output = self.step(data, batch_idx, mode, worker_id)
+
+        predictions = model_output[ModelOutput.PREDICTIONS]
+        obj_labels = model_output[ModelOutput.GROUND_TRUTHS]
+        losses = model_output[ModelOutput.LOSSES]
 
         pred_processed, gt_processed = self.convert_labels_for_logging(predictions, obj_labels)
+
+        sparsity_mask = model_output.get(ModelOutput.SPARSITY_MASK)
+        if sparsity_mask is not None:
+            sparsity_mask = sparsity_mask.detach().cpu().numpy()
+            sparsity_mask = sparsity_mask[-1]
+
+        event_repr = model_output.get(ModelOutput.EVENT_DATA)
+        if event_repr is not None:
+            event_repr = event_repr[-1]
+        image_data = model_output.get(ModelOutput.IMAGE_DATA)
+        if image_data is not None:
+            image_data = image_data[-1]
 
         output = {
             ObjDetOutput.LABELS_PROPH: gt_processed[-1],
             ObjDetOutput.PRED_PROPH: pred_processed[-1],
-            ObjDetOutput.EV_REPR: event_repr[-1],
+            ObjDetOutput.EV_REPR: event_repr,
+            ObjDetOutput.SPARSITY_MASK: sparsity_mask,
+            ObjDetOutput.IMAGE_DATA: image_data,
             ObjDetOutput.SKIP_VIZ: False,
         }
 
@@ -277,14 +307,6 @@ class Module(pl.LightningModule):
             psee_evaluator.reset_buffer()
         else:
             warn(f'psee_evaluator has not data in {mode=}', UserWarning, stacklevel=2)
-
-    # def smooth_loss(self, step_loss, idx):
-    #     if self.trainer.global_step == 0:
-    #         self.loss = [0] * 5
-    #         self.loss[idx] = step_loss
-    #     else:
-    #         self.loss[idx] = (self.loss[idx] * (self.trainer.global_step) + step_loss) / (self.trainer.global_step + 1)
-    #     return self.loss[idx]
 
     def smooth_loss(self, step_loss, idx):
         if self.trainer.global_step == 0:
