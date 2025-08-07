@@ -2,6 +2,7 @@
 *.ckpt
 wandb/
 outputs/
+output
 validation_logs/
 .hydra
 SAST.onnx
