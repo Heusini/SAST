@@ -2,7 +2,7 @@ import pytorch_lightning as pl
 from typing import Any, Dict, Optional, Union
 from pathlib import Path
 import numpy as np
-from omegaconf import DictConfig
+from omegaconf import DictConfig, ListConfig
 from torch.utils.data import ConcatDataset, Dataset, DataLoader
 from data.utils.types import DatasetMode, DatasetSamplingMode
 from data.utils.collate import custom_collate_rnd, custom_collate_streaming
@@ -65,20 +65,38 @@ class ArmaDataModule(pl.LightningDataModule):
         
 
     def setup(self, stage: Optional[str] = None) -> None:
-        percent_train = self.dataset_config.train.use_fraction
-        percent_val = self.dataset_config.validation.use_fraction
+        use_fraction_train = self.dataset_config.train.use_fraction
+        use_fraction_val = self.dataset_config.validation.use_fraction
         if stage == 'fit':
-            train_dataset = self.base_dataset.build(dataset_mode=DatasetMode.TRAIN, 
-                                                          dataset_config=self.dataset_config)
-            train_dataset = PartialDataset(train_dataset, percent_train)
-            if self.dataset_config.data_augmentation:
-                train_dataset = AugmentedDataset.build(dataset_config=self.dataset_config, dataset=train_dataset)
-            self.sampling_mode_2_dataset[DatasetSamplingMode.RANDOM] = train_dataset
-            
-            validation_dataset = self.base_dataset.build(dataset_mode=DatasetMode.VALIDATION, 
+            train_datasets = []
+            validation_datasets = []
+            path = self.dataset_config.path
+            if not isinstance(path, list):
+                path = list(path)
+
+            for i, dataset_path in enumerate(path):
+                percent_train = use_fraction_train
+                percent_val = use_fraction_val
+                if isinstance(percent_train, (list, ListConfig)):
+                    percent_train = float(percent_train[i])
+                if isinstance(percent_val, (list, ListConfig)):
+                    percent_val = float(percent_val[i])
+
+                # this is not optimal as we override the datasetpath maybe change
+                self.dataset_config.path = str(dataset_path)
+                train_dataset = self.base_dataset.build(dataset_mode=DatasetMode.TRAIN, 
                                                               dataset_config=self.dataset_config)
-            validation_dataset = PartialDataset(validation_dataset, percent_val) 
-            self.validation_dataset = validation_dataset
+                train_dataset = PartialDataset(train_dataset, percent_train)
+                if self.dataset_config.data_augmentation:
+                    train_dataset = AugmentedDataset.build(dataset_config=self.dataset_config, dataset=train_dataset)
+                train_datasets.append(train_dataset)
+            
+                validation_dataset = self.base_dataset.build(dataset_mode=DatasetMode.VALIDATION, 
+                                                                  dataset_config=self.dataset_config)
+                validation_dataset = PartialDataset(validation_dataset, percent_val) 
+                validation_datasets.append(validation_dataset)
+            self.sampling_mode_2_dataset[DatasetSamplingMode.RANDOM] = ConcatDataset(train_datasets)
+            self.validation_dataset = ConcatDataset(validation_datasets)
 
         elif stage == 'validate':
             self.validation_dataset = self.base_dataset.build(dataset_mode=DatasetMode.VALIDATION,
@@ -106,7 +124,7 @@ class ArmaDataModule(pl.LightningDataModule):
         shuffle = self.dataset_config.validation.shuffle
         return DataLoader(dataset=dataset,
                           batch_size=batch_size,
-                          shuffle=True,
+                          shuffle=shuffle,
                           sampler=None,
                           num_workers=self.num_workers_eval,
                           pin_memory=True,
