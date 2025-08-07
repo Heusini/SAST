@@ -4,3 +4,4 @@ defaults:
   - model: rnndet
   - optional model/dataset: ${model}_${dataset}
   
+checkpoint: ???

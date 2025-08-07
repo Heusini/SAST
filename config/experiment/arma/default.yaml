@@ -2,10 +2,6 @@
 defaults:
   - /model/sast_yolox: default
 
-ckpt:
-  path: "sast.ckpt"
-  # path: null
-
 training:
   precision: 16
   max_epochs: 20
@@ -23,10 +19,6 @@ validation:
 batch_size:
   train: 12
   eval: 12
-hardware:
-  num_workers:
-    train: 6
-    eval: 2
 dataset:
   train:
     sampling: 'random'

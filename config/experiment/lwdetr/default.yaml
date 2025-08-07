@@ -2,9 +2,6 @@
 defaults:
   - /model: lwdetr
 
-ckpt:
-  path: "sast.ckpt"
-  # path: null
 
 training:
   precision: 16
@@ -23,10 +20,6 @@ validation:
 batch_size:
   train: 12
   eval: 12
-hardware:
-  num_workers:
-    train: 6
-    eval: 2
 dataset:
   train:
     sampling: 'random'

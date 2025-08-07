@@ -81,7 +81,7 @@ head:
 
   pretrained_encoder: null
   # Finetune armasuisse checkpoint
-  pretrain_weights: '/home/sheusinger/repos/SAST/LWDETR_tiny.pth'
+  pretrain_weights: './LWDETR_tiny2.pth'
   pretrain_exclude_keys: ['transformer.enc_out_class_embed', 'class_embed', 'backbone.0.encoder.patch_embed.proj.weight']
   pretrain_keys_modify_to_load: null
   encoder: 'vit_tiny'
@@ -105,7 +105,7 @@ head:
   dec_n_points: 2
   decoder_norm: 'LN'
   bbox_reparam: true
-  img_height: 360
+  img_height: 384
   img_width: 640
 
   set_cost_class: 2
@@ -130,7 +130,6 @@ head:
   output_dir: 'output/no_missing'
   checkpoint_interval: 10
   seed: 42
-    #resume: '/home/sheusinger/src/SparseDETR/output/6ch_50ms/best.pth'
   resume: false
   start_epoch: 0
   eval: false
