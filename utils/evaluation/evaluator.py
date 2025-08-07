@@ -15,6 +15,10 @@ except ImportError:
     from pycocotools.cocoeval import COCOeval
 
 
+def convert_to_xywh(boxes):                                          
+    xmin, ymin, xmax, ymax = boxes                         
+    return [xmin, ymin, xmax-xmin, ymax-ymin]
+
 class Evaluator:
     LABELS = 'lables'
     PREDICTIONS = 'predictions'
@@ -63,33 +67,33 @@ class Evaluator:
     def format_labels_to_coco(self, gt, im_id, id):
         annotations = []
         for bbox in gt:
-            x1, y1 = bbox[0], bbox[1]
-            w, h = bbox[2]-x1, bbox[3]-y1
+            box = convert_to_xywh(bbox[:4])
+            w, h = box[2:]
             area = w * h
             id += 1
             annotation = {
                 "area": float(area),
                 "iscrowd": False,
                 "image_id": im_id,
-                "bbox": [x1, y1, w, h],
-                "category_id": int(bbox[4]) + 1,
+                "bbox": box,
+                "category_id": int(bbox[4]),
                 "id": id
             }
             annotations.append(annotation)
         return annotations, id
 
-    def format_predictions_to_coco(self, pred, im_id):
+    def format_predictions_to_coco(self, predictons, im_id):
         results = []
-        if pred is not None:
-            for bbox in pred:
-                x1, y1 = bbox[0], bbox[1]
-                w, h = bbox[2]-x1, bbox[3]-y1
+        if predictons is not None:
+            for bbox in predictons:
+                pred_box = convert_to_xywh(bbox[:4])
                 image_result = {
                     'image_id': im_id,
-                    'category_id': int(bbox[6]) + 1,
-                    'score': float(bbox[5]),
-                    'bbox': [x1, y1, w, h],
+                    'score': bbox[5],
+                    'category_id': int(bbox[6]),
+                    'bbox': pred_box,
                 }
+                # print(f"{image_result=}")
                 results.append(image_result)
         
         return results
@@ -103,7 +107,7 @@ class Evaluator:
         images = []
         box_id_count = 0
 
-        categories = [{"id": id + 1, "name": class_name, "supercategory": "none"}
+        categories = [{"id": id, "name": class_name, "supercategory": "none"}
                       for id, class_name in enumerate(self.classes)]
         # to dictionary
         assert len(gts) == len(detections)
