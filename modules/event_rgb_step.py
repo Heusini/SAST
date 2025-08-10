@@ -78,7 +78,7 @@ def step(self, data: Any, batch_idx: int, mode: Mode, worker_id):
             ModelOutput.LOSSES: losses,
             ModelOutput.GROUND_TRUTHS: obj_labels,
             ModelOutput.IMAGE_DATA: image_sequence,
-            ModelOutput.EVENT_DATA: event_repr[-batch_size:],
+            ModelOutput.EVENT_DATA: event_repr,
     }
 
     return output

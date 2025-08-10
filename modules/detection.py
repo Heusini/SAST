@@ -110,13 +110,14 @@ class Module(pl.LightningModule):
 
     def forward(self,
                 event_tensor: th.Tensor,
+                rgb_image: th.Tensor,
                 previous_states: Optional[LstmStates] = None) \
             -> Tuple[th.Tensor, th.Tensor, th.Tensor, th.Tensor]:
 
-        with CudaTimer(torch.device('cuda'), "SAST"):
-            output = self.mdl.forward_backbone(x=event_tensor,
-                            previous_states=previous_states)[0]
-        output = [output[i] for i in [1, 2, 3, 4]]
+        with CudaTimer(torch.device('cuda'), "COMPLETE_FORWARD"):
+            output = self.mdl.forward(x=event_tensor,
+                                      rgb_image=rgb_image,
+                            previous_states=previous_states)
         return output
 
     def get_worker_id_from_batch(self, batch: Any) -> int:
@@ -182,8 +183,8 @@ class Module(pl.LightningModule):
             ObjDetOutput.LABELS_PROPH: gt_processed[-batch_size:],
             ObjDetOutput.PRED_PROPH: pred_processed[-batch_size:],
             ObjDetOutput.SPARSITY_MASK: sparsity_mask,
-            ObjDetOutput.EV_REPR: event_repr,
-            ObjDetOutput.IMAGE_DATA: image_data,
+            ObjDetOutput.EV_REPR: event_repr[-batch_size:],
+            ObjDetOutput.IMAGE_DATA: image_data[-batch_size:],
             ObjDetOutput.SKIP_VIZ: False,
             'loss': losses['loss']
         }

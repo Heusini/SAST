@@ -101,8 +101,8 @@ def step(self, data: Any, batch_idx: int, mode: Mode, worker_id):
             ModelOutput.PREDICTIONS: predictions,
             ModelOutput.LOSSES: losses,
             ModelOutput.GROUND_TRUTHS: obj_labels,
-            ModelOutput.EVENT_DATA: event_repr[-batch_size:],
-            ModelOutput.SPARSITY_MASK: sparsity_mask[-batch_size:],
+            ModelOutput.EVENT_DATA: event_repr,
+            ModelOutput.SPARSITY_MASK: sparsity_mask,
     }
 
     return output
