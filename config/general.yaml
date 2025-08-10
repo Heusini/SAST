@@ -26,8 +26,8 @@ batch_size:
   eval: 8
 hardware:
   num_workers:
-    train: 6
-    eval: 2
+    train: 8
+    eval: 4
   gpus: 0 # Either a single integer (e.g. 3) or a list of integers (e.g. [3,5,6])
   cpus: null
   dist_backend: "nccl"
