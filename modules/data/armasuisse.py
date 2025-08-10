@@ -71,7 +71,9 @@ class ArmaDataModule(pl.LightningDataModule):
             train_datasets = []
             validation_datasets = []
             path = self.dataset_config.path
-            if not isinstance(path, list):
+            if not isinstance(path, (list, ListConfig)):
+                path = [path]
+            else:
                 path = list(path)
 
             for i, dataset_path in enumerate(path):
