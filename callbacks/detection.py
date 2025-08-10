@@ -30,6 +30,8 @@ class DetectionVizCallback(VizCallbackBase):
 
         dataset_name = config.dataset.name
         self.label_map = config.dataset.classes
+
+        # fixed for now maybe add to config
         self.confidence_threshold = 0.5
 
     def get_bbox_text(self, bbox):
@@ -50,7 +52,7 @@ class DetectionVizCallback(VizCallbackBase):
         else:
             return False
 
-    def draw_filtered_boxes(self, image, bboxes, color, threshold):
+    def draw_filtered_bboxes(self, image, bboxes, color):
         for box in bboxes:
             if box is None or len(box) == 0 or self.filter(box):
                 continue
@@ -87,7 +89,7 @@ class DetectionVizCallback(VizCallbackBase):
         img = img.copy()
         if sparsity_mask is not None:
             img = self.apply_sparsity_mask(img, sparsity_mask)
-        img = self.draw_bboxes(img, labels, color=label_color)
+        img = self.draw_filtered_bboxes(img, labels, color=label_color)
         return img
 
         
