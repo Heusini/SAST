@@ -44,8 +44,7 @@ def get_extensions():
             "-D__CUDA_NO_HALF_OPERATORS__",
             "-D__CUDA_NO_HALF_CONVERSIONS__",
             "-D__CUDA_NO_HALF2_OPERATORS__",
-            "-I/home/sheusinger/miniconda3/envs/sast/targets/x86_64-linux/include"
-
+            "-I/home/sheusinger/miniconda3/envs/sast/targets/x86_64-linux/include",
         ]
     else:
         raise NotImplementedError('Cuda is not availabel')
