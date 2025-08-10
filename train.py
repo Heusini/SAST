@@ -154,14 +154,15 @@ def main(config: DictConfig):
 
         module.mdl.backbone.load_state_dict(backbone_dict, strict=True)
         module.mdl.fpn.load_state_dict(fpn_dict, strict=True)
-        # for param in module.mdl.backbone.parameters():
-        #     param.requires_grad = False
+        if config.model.freeze:
+            for param in module.mdl.backbone.parameters():
+                param.requires_grad = False
 
-        # for param in module.mdl.fpn.parameters():
-        #     param.requires_grad = False
+            for param in module.mdl.fpn.parameters():
+                param.requires_grad = False
 
-        # module.mdl.backbone.eval()
-        # module.mdl.fpn.eval()
+            module.mdl.backbone.eval()
+            module.mdl.fpn.eval()
         ckpt_path = None
 
     # print_layer_sizes(module)
