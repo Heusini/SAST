@@ -31,12 +31,12 @@ def measure_average_inference_time_iter(model, inputs, num_iters=100, warm_iters
 
 
 @torch.no_grad()
-def measure_average_inference_time(model, inputs, num_iters=100, warm_iters=10):
+def measure_average_inference_time(model, inputs, rgb_input, num_iters=100, warm_iters=10):
     for iter_ in tqdm.tqdm(range(warm_iters + num_iters)):
         if iter_ == warm_iters:
             torch.cuda.synchronize()
             t_ = time.perf_counter()
-        model(inputs)
+        model(inputs, rgb_input)
     torch.cuda.synchronize()
     t = time.perf_counter() - t_
     return t / num_iters

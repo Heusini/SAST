@@ -12,7 +12,7 @@ except ImportError:
 
 from ..recurrent_backbone import build_recurrent_backbone
 from ..yolox_extension.models.build import build_yolox_fpn, build_yolox_head
-from utils.timers import TimerDummy as CudaTimer
+from utils.timers import CudaTimer
 
 from data.utils.types import BackboneFeatures, LstmStates
 from .lwdetr import build as build_lwdetr
@@ -44,17 +44,14 @@ class LWDETRDetector(th.nn.Module):
                          previous_states: Optional[LstmStates] = None,
                          token_mask: Optional[th.Tensor] = None) -> \
             Tuple[BackboneFeatures, LstmStates, th.Tensor]:
-        with CudaTimer(device=x.device, timer_name="Backbone"):
-            backbone_features, states, p = self.backbone(x, previous_states, token_mask)
+        # with CudaTimer(device=x.device, timer_name="Backbone"):
+        backbone_features, states, p = self.backbone(x, previous_states, token_mask)
         return backbone_features, states, p
 
     def forward_fpn(self, backbone_features):
         device = next(iter(backbone_features.values())).device
 
-        with CudaTimer(device=device, timer_name="FPN"):
-            fpn_features = self.fpn(backbone_features)
-        # print(f"{len(fpn_features)=}")
-        # print(f"{fpn_features[0].shape=}")
+        fpn_features = self.fpn(backbone_features)
         return fpn_features
 
     def get_sparsity_mask(self, fpn_layer: th.Tensor, threshold = 0.7):
@@ -79,12 +76,8 @@ class LWDETRDetector(th.nn.Module):
 
         device = next(iter(event_frame)).device
         dtype = next(self.parameters()).dtype
-        # print(f"{len(event_frame)=}")
-        # print(f"{event_frame[0].shape=}")
         event_frame = th.vstack(event_frame).to(dtype)
-        # print(f"{event_frame.shape=}")
-        with CudaTimer(device=device, timer_name="HEAD + Loss"):
-            outputs = self.lwdetr(event_frame, sparsity_mask, targets)
+        outputs = self.lwdetr(event_frame, sparsity_mask, targets)
 
         loss_dict = self.criterion(outputs, targets)
         predictions = self.postprocessors['bbox'](outputs)
@@ -99,15 +92,21 @@ class LWDETRDetector(th.nn.Module):
 
     def forward(self,
                 x: th.Tensor,
+                rgb_image: th.Tensor,
                 previous_states: Optional[LstmStates] = None,
                 retrieve_detections: bool = True,
                 targets: Optional[th.Tensor] = None) -> \
             Tuple[Union[th.Tensor, None], Union[Dict[str, th.Tensor], None], LstmStates, th.Tensor]:
-        backbone_features, states, p, _, _ = self.forward_backbone(x, previous_states)
-        outputs, losses = None, None
-        if not retrieve_detections:
-            assert targets is None
-            return outputs, losses, states
-        outputs, losses = self.forward_detect(backbone_features=backbone_features, targets=targets)
-        return outputs, losses, states, p
+        with CudaTimer(th.device('cuda'), "SAST"):
+            backbone_features, _, _ = self.backbone(x, previous_states)
+        with CudaTimer(th.device('cuda'), "FPN"):
+            fpn_features = self.fpn(backbone_features)
+        with CudaTimer(th.device('cuda'), "SPARSITY_MASK"):
+            sparsity_mask = self.get_sparsity_mask(fpn_features[0], 0.2)
+            sparsity_mask = sparsity_mask > 0.15
+            sparsity_mask = sparsity_mask.flatten(1,2)
+        with CudaTimer(th.device('cuda'), "LWDETR"):
+            predictions = self.lwdetr(x.float(), sparsity_mask, None)
+
+        return predictions
 

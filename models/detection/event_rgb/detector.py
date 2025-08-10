@@ -11,7 +11,8 @@ except ImportError:
 
 from ..recurrent_backbone import build_recurrent_backbone
 from ..yolox_extension.models.build import build_yolox_fpn, build_yolox_head
-from utils.timers import TimerDummy as CudaTimer
+from utils.timers import CudaTimer
+from utils.padding import InputPadderFromShape
 
 from ..rgb_yolo.yolo_pafpn import YOLOPAFPN
 
@@ -46,8 +47,7 @@ class EventRGBDetector(th.nn.Module):
                          previous_states: Optional[LstmStates] = None,
                          token_mask: Optional[th.Tensor] = None) -> \
             Tuple[BackboneFeatures, LstmStates, th.Tensor]:
-        with CudaTimer(device=x.device, timer_name="Backbone"):
-            backbone_features, states, p = self.backbone(x, previous_states, token_mask)
+        backbone_features, states, p = self.backbone(x, previous_states, token_mask)
         return backbone_features, states, p
 
     def forward_detect(self,
@@ -56,39 +56,37 @@ class EventRGBDetector(th.nn.Module):
                        targets: Optional[th.Tensor] = None) -> \
             Tuple[th.Tensor, Union[Dict[str, th.Tensor], None]]:
         device = next(iter(backbone_features.values())).device
-        with CudaTimer(device=device, timer_name="FPN"):
-            fpn_features = self.fpn(backbone_features)
-
-        # print(f"{rgb_image.norm(p=2)=}")
-        # print(f"{rgb_image.shape=}")
-        # for i in range(len(fpn_features)):
-        #     print(f"{fpn_features[i].shape=}")
-        #     print(f"{fpn_features[i].norm(p=2)=}")
+        fpn_features = self.fpn(backbone_features)
         rgb_features = self.rgb_fpn(rgb_image)
-        # for i in range(len(rgb_features)):
-        #     print(f"{rgb_features[i].shape=}")
-        #     print(f"{rgb_features[i].norm(p=2)=}")
-        # sys.exit(0)
 
         features = []
         for f, r in zip(fpn_features, rgb_features):
             intermediate_features = th.add(f, r)
             features.append(intermediate_features)
 
-        with CudaTimer(device=device, timer_name="HEAD + Loss"):
-            outputs, losses = self.yolox_head(features, targets)
+        outputs, losses = self.yolox_head(features, targets)
         return outputs, losses
 
     def forward(self,
                 x: th.Tensor,
+                rgb_image: th.Tensor,
                 previous_states: Optional[LstmStates] = None,
                 retrieve_detections: bool = True,
                 targets: Optional[th.Tensor] = None) -> \
             Tuple[Union[th.Tensor, None], Union[Dict[str, th.Tensor], None], LstmStates, th.Tensor]:
-        backbone_features, states, p, _, _ = self.forward_backbone(x, previous_states)
-        outputs, losses = None, None
-        if not retrieve_detections:
-            assert targets is None
-            return outputs, losses, states
-        outputs, losses = self.forward_detect(backbone_features=backbone_features, targets=targets)
-        return outputs, losses, states, p
+        with CudaTimer(th.device('cuda'), "SAST"):
+            backbone_features, _, _ = self.backbone(x, previous_states)
+        with CudaTimer(th.device('cuda'), "EVENT_FPN"):
+            fpn_features = self.fpn(backbone_features)
+        with CudaTimer(th.device('cuda'), "RGB_FPN"):
+            rgb_image, _ = InputPadderFromShape._pad_tensor_impl(rgb_image, (384, 640), mode='constant', value=0)
+            rgb_features = self.rgb_fpn(rgb_image)
+        with CudaTimer(th.device('cuda'), "FUSE RGB + EVENT"):
+            features = []
+            for f, r in zip(fpn_features, rgb_features):
+                intermediate_features = th.add(f, r)
+                features.append(intermediate_features)
+        with CudaTimer(th.device('cuda'), "YOLOX"):
+            predictions, _ = self.yolox_head(features, None)
+
+        return predictions

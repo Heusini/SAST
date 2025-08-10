@@ -32,7 +32,7 @@ from data.utils.types import DataType, LstmStates, ObjDetOutput, DatasetSampling
 from utils.padding import InputPadderFromShape
 
 import matplotlib.pyplot as plt
-
+from benchmark import measure_average_inference_time
 
 @hydra.main(config_path='config', config_name='val', version_base='1.2')
 def main(config: DictConfig):
@@ -73,26 +73,27 @@ def main(config: DictConfig):
     val_loader = data_module.val_dataloader()
     data = next(iter(val_loader))['data']
     ev_tensor_sequence = data[DataType.EV_REPR]
+    rgb_sequence = data[DataType.IMAGE]
     ev_tensors = ev_tensor_sequence[0]
+    rgb_image = rgb_sequence[0]
     ev_tensors = input_padder.pad_tensor_ev_repr(ev_tensors)
     input_sample = ev_tensors
     print(input_sample.shape)
-    print(input_sample.int().dtype)
-    module = module.eval()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    input_sample = input_sample.to(device)
+    rgb_image = rgb_image.to(device)
+    module.to(device)
+    module.eval()
+    print(module.device)
+    print(input_sample.device)
+
     with torch.no_grad():
-        torch.onnx.export(
-        module, 
-        input_sample, 
-        "model.onnx",
-        input_names=["input"],
-        output_names=["output"],
-        dynamic_axes={"input": {0: "batch_size"}, "output": {0: "batch_size"}},
-        opset_version=17
-        )
-    # onnx_model = torch.onnx.export(module, input_sample)
+        output = measure_average_inference_time(module, input_sample, rgb_image)
+        print(output)
 
 
 
 if __name__ == '__main__':
     # torch.multiprocessing.set_start_method('spawn')
     main()
+

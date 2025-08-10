@@ -3,6 +3,7 @@ import sys
 
 import torch as th
 from omegaconf import DictConfig
+from utils.padding import InputPadderFromShape
 
 try:
     from torch import compile as th_compile
@@ -11,7 +12,7 @@ except ImportError:
 
 from ..recurrent_backbone import build_recurrent_backbone
 from ..yolox_extension.models.build import build_yolox_fpn, build_yolox_head
-from utils.timers import TimerDummy as CudaTimer
+from utils.timers import CudaTimer
 
 from ..rgb_yolo.yolo_pafpn import YOLOPAFPN
 
@@ -51,18 +52,22 @@ class RGBDetector(th.nn.Module):
         device = rgb_image.device
         rgb_features = self.backbone(rgb_image)
 
-        with CudaTimer(device=device, timer_name="HEAD + Loss"):
-            outputs, losses = self.yolox_head(rgb_features, targets)
+        outputs, losses = self.yolox_head(rgb_features, targets)
         return outputs, losses
 
     def forward(self,
                 x: th.Tensor,
+                rgb_image: th.Tensor,
+                previous_states: Optional[LstmStates] = None,
+                retrieve_detections: bool = True,
                 targets: Optional[th.Tensor] = None) -> \
             Tuple[Union[th.Tensor, None], Union[Dict[str, th.Tensor], None], LstmStates, th.Tensor]:
-        device = next(iter(backbone_features.values())).device
-        rgb_features = self.backbone(rgb_image)
+        with CudaTimer(th.device('cuda'), "PAFPN"):
+            rgb_image, _ = InputPadderFromShape._pad_tensor_impl(rgb_image, (384, 640), mode='constant', value=0)
+            rgb_features = self.backbone(rgb_image)
+        with CudaTimer(th.device('cuda'), "YOLOX"):
+            predictions, _ = self.yolox_head(rgb_features, None)
 
-        with CudaTimer(device=device, timer_name="HEAD + Loss"):
-            outputs, losses = self.yolox_head(rgb_features, targets)
-        return outputs, losses
+        return predictions
+
 
