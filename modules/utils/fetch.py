@@ -13,12 +13,14 @@ from data.event_rgb.event_rgb_dataset import EventRGBDataset
 from modules.event_data_step import step as event_data_step
 from modules.event_rgb_step import step as event_rgb_step
 from modules.event_lwdetr_step import step as event_lwdetr_step
+from modules.lwdetr_official_step import step as lwdetr_official_step
 from modules.rgb_step import step as rgb_step
 
 from models.detection.event_rgb.detector import EventRGBDetector
 from models.detection.rgb_yolo.detector import RGBDetector
 from models.detection.yolox_extension.models.detector import YoloXDetector
 from models.detection.lwdetr.detector import LWDETRDetector
+from models.detection.lwdetr_official.detector import LWDETROfficial
 
 
 def fetch_model_module(config: DictConfig) -> pl.LightningModule:
@@ -31,6 +33,9 @@ def fetch_model_module(config: DictConfig) -> pl.LightningModule:
         return Module(config, LWDETRDetector, event_lwdetr_step)
     if model_str == "rgb":
         return Module(config, RGBDetector, rgb_step)
+    if model_str == "lwdetr_official":
+        return Module(config, LWDETROfficial, lwdetr_official_step)
+
         
     raise NotImplementedError
 
