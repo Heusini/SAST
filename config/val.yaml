@@ -3,7 +3,7 @@ defaults:
   - model: rnndet
   - _self_
 
-checkpoint: ???
+checkpoint: null
 use_test_set: True
 hardware:
   num_workers:
