@@ -9,11 +9,8 @@ def get_ckpt_callback(config: DictConfig) -> ModelCheckpoint:
     model_name = config.model.name
 
     prefix = 'val'
-    if model_name in ['rnndet', 'eventrgb', 'lwdetr', 'rgb']:
-        metric = 'AP (all)'
-        mode = 'max'
-    else:
-        raise NotImplementedError
+    metric = 'AP (all)'
+    mode = 'max'
     ckpt_callback_monitor = prefix + '/' + metric
     filename_monitor_str = prefix + '_' + metric
 
@@ -34,6 +31,4 @@ def get_ckpt_callback(config: DictConfig) -> ModelCheckpoint:
 def get_viz_callback(config: DictConfig) -> Callback:
     model_name = config.model.name
 
-    if model_name in ['rnndet', 'eventrgb', 'lwdetr', 'rgb']:
-        return DetectionVizCallback(config=config)
-    raise NotImplementedError
+    return DetectionVizCallback(config=config)
