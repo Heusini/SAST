@@ -177,14 +177,18 @@ class Module(pl.LightningModule):
             sparsity_mask = sparsity_mask[-batch_size:]
 
         event_repr = model_output.get(ModelOutput.EVENT_DATA)
+        if event_repr is not None:
+            event_repr = event_repr[-batch_size:]
         image_data = model_output.get(ModelOutput.IMAGE_DATA)
+        if image_data is not None:
+            image_data = image_data[-batch_size:]
 
         output = {
             ObjDetOutput.LABELS_PROPH: gt_processed[-batch_size:],
             ObjDetOutput.PRED_PROPH: pred_processed[-batch_size:],
             ObjDetOutput.SPARSITY_MASK: sparsity_mask,
-            ObjDetOutput.EV_REPR: event_repr[-batch_size:],
-            ObjDetOutput.IMAGE_DATA: image_data[-batch_size:],
+            ObjDetOutput.EV_REPR: event_repr,
+            ObjDetOutput.IMAGE_DATA: image_data,
             ObjDetOutput.SKIP_VIZ: False,
             'loss': losses['loss']
         }
