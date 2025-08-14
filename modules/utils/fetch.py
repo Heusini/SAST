@@ -14,6 +14,7 @@ from modules.event_data_step import step as event_data_step
 from modules.event_rgb_step import step as event_rgb_step
 from modules.event_lwdetr_step import step as event_lwdetr_step
 from modules.lwdetr_official_step import step as lwdetr_official_step
+from modules.lwdetr_official_rgb_step import step as lwdetr_official_rgb_step
 from modules.rgb_step import step as rgb_step
 
 from models.detection.event_rgb.detector import EventRGBDetector
@@ -35,6 +36,8 @@ def fetch_model_module(config: DictConfig) -> pl.LightningModule:
         return Module(config, RGBDetector, rgb_step)
     if model_str == "lwdetr_official":
         return Module(config, LWDETROfficial, lwdetr_official_step)
+    if model_str == "lwdetr_official_rgb":
+        return Module(config, LWDETROfficial, lwdetr_official_rgb_step)
 
         
     raise NotImplementedError
