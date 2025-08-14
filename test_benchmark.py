@@ -60,7 +60,7 @@ def main(config: DictConfig):
     # Logging and Checkpoints
     # ---------------------
     logger = CSVLogger(save_dir='./validation_logs')
-    ckpt_path = Path(config.checkpoint)
+    # ckpt_path = Path(config.checkpoint)
 
     # ---------------------
     # Model
