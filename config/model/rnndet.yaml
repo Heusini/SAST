@@ -2,6 +2,7 @@ defaults:
   - base
 
 name: rnndet
+checkpoint: sast.ckpt
 backbone:
   name: ???
 fpn:
