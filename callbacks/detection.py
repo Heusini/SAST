@@ -32,7 +32,7 @@ class DetectionVizCallback(VizCallbackBase):
         self.label_map = config.dataset.classes
 
         # fixed for now maybe add to config
-        self.confidence_threshold = 0.5
+        self.confidence_threshold = 0.3
 
     def get_bbox_text(self, bbox):
         class_name = self.label_map[int(bbox[4]) % len(self.label_map)]
@@ -137,9 +137,9 @@ class DetectionVizCallback(VizCallbackBase):
                 image = image.cpu().numpy()
                 image *= 255
                 image = image.astype(np.uint8)
-                prediction_img = self.draw_on_image(image, None, predictions_idx, BLUE)
+                prediction_img = self.draw_on_image(image, mask, predictions_idx, BLUE)
 
-                label_img = self.draw_on_image(image, None, labels_idx, GREEN)
+                label_img = self.draw_on_image(image, mask, labels_idx, GREEN)
                 merged_rgbs = rearrange([prediction_img, label_img], 'pl H W C -> (pl H) W C', pl=2, C=3)
             
             merger = None
@@ -184,10 +184,10 @@ class DetectionVizCallback(VizCallbackBase):
             image *= 255
             image = image.astype(np.uint8)
             
-            prediction_img = self.draw_on_image(image, None, predictions_proph, BLUE)
+            prediction_img = self.draw_on_image(image, sparsity_mask, predictions_proph, BLUE)
             self.add_to_buffer(DetectionVizEnum.PRED_IMG_PROPH, prediction_img)
 
-            label_img = self.draw_on_image(image, None, labels_proph, GREEN)
+            label_img = self.draw_on_image(image, sparsity_mask, labels_proph, GREEN)
             self.add_to_buffer(DetectionVizEnum.LABEL_IMG_PROPH, label_img)
 
     def on_validation_epoch_end_custom(self, logger: WandbLogger):
