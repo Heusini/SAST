@@ -29,7 +29,9 @@ head:
 
   pretrained_encoder: null
   # Finetune armasuisse checkpoint
-  pretrain_weights: './LWDETR_tiny2.pth'
+
+  pretrain_weights: null
+  # pretrain_weights: './LWDETR_tiny2.pth'
   pretrain_exclude_keys: ['transformer.enc_out_class_embed', 'class_embed', 'backbone.0.encoder.patch_embed.proj.weight']
   pretrain_keys_modify_to_load: null
   encoder: 'vit_tiny'
@@ -53,7 +55,7 @@ head:
   dec_n_points: 2
   decoder_norm: 'LN'
   bbox_reparam: true
-  img_height: 384
+  img_height: 360
   img_width: 640
 
   set_cost_class: 2
@@ -93,14 +95,14 @@ head:
   fp16_eval: false
 
   # Export parameter
-  subcommand: null # 'export_model'
-  shape: [640, 640]
-  infer_dir: null
-  verbose: false
-  opset_version: 17
-  simplify: true
-  tensorrt: true
-  dry_run: false
+  # subcommand: null # 'export_model'
+  # shape: [640, 640]
+  # infer_dir: null
+  # verbose: false
+  # opset_version: 17
+  # simplify: true
+  # tensorrt: true
+  # dry_run: false
 postprocess:
   confidence_threshold: 0.01
   nms_threshold: 0.45
