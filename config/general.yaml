@@ -22,8 +22,8 @@ validation:
   val_check_interval: null # Optional[int]
   check_val_every_n_epoch: 1 # Optional[int]
 batch_size:
-  train: 8
-  eval: 8
+  train: 4
+  eval: 4
 hardware:
   num_workers:
     train: 8

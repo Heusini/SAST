@@ -17,8 +17,8 @@ validation:
   val_check_interval: null
   check_val_every_n_epoch: 1
 batch_size:
-  train: 12
-  eval: 12
+  train: 10
+  eval: 10
 dataset:
   train:
     sampling: 'random'
