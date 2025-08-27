@@ -24,7 +24,6 @@ def dynamically_modify_train_config(config: DictConfig):
         if mdl_name in ['rnndet', 'eventrgb', 'lwdetr', 'rgb', 'lwdetr_official', 'lwdetr_official_rgb']:
             backbone_cfg = mdl_cfg.backbone
             backbone_name = backbone_cfg.name
-            print(backbone_name)
             if backbone_name == 'SASTRNN':
                 partition_split_32 = backbone_cfg.partition_split_32
                 assert partition_split_32 in (1, 2, 4)
