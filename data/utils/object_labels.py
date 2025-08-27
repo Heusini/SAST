@@ -178,6 +178,7 @@ class ObjectLabels(ObjectLabelBase):
         labels[:] = self.class_id.int()
         target["boxes"] = boxes
         target["labels"] = labels
+        target["orig_size"] = th.as_tensor([h, w], device=self.device)
         return target
 
     def get_labels(self) -> th.Tensor:
