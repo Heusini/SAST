@@ -46,11 +46,18 @@ def step(self, data: Any, batch_idx: int, mode: Mode, worker_id):
 
 
     image_sequence = th.cat(image_sequence, dim=0)
-    image_sequence = self.input_padder.pad_tensor_ev_repr(image_sequence)
     if self.mode_2_hw[mode] is None:
         self.mode_2_hw[mode] = tuple(image_sequence[0].shape[-2:])
     obj_labels = [l for labels in sparse_obj_labels for l in labels.sparse_object_labels_batch]
-    labels_lwdetr = ObjectLabels.get_labels_as_batched_tensor(obj_label_list=obj_labels, format_='lwdetr')
+
+    labels_lwdetr = []
+    count = 1
+    for labels in obj_labels:
+        obj_labels_coco = labels.get_labels_lwdetr_normalized(image_sequence[0].shape[-2:])
+        obj_labels_coco["image_id"] = count
+        labels_lwdetr.append(obj_labels_coco)
+        count += 1
+
     predictions, losses = self.mdl.forward_detect(image_sequence, labels_lwdetr)
 
     predictions = convert_predictions(predictions)
