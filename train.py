@@ -127,11 +127,6 @@ def main(config: DictConfig):
     # ---------------------
     # Logging and Checkpoints
     # ---------------------
-    logger = get_wandb_logger(config)
-    # logger = CSVLogger(save_dir='./logs/', name='experiment_name')
-    ckpt_path = None
-    if config.wandb.artifact_name is not None:
-        ckpt_path = get_ckpt_path(logger, wandb_config=config.wandb)
 
     # ---------------------
     # Model
@@ -165,6 +160,11 @@ def main(config: DictConfig):
             module.mdl.fpn.eval()
         ckpt_path = None
 
+    logger = get_wandb_logger(config)
+    # logger = CSVLogger(save_dir='./logs/', name='experiment_name')
+    ckpt_path = None
+    if config.wandb.artifact_name is not None:
+        ckpt_path = get_ckpt_path(logger, wandb_config=config.wandb)
     # print_layer_sizes(module)
     # summary(module, input_size=(4, 20, 384, 640))
     # sys.exit(0)
