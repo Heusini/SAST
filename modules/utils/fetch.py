@@ -13,6 +13,7 @@ from data.event_rgb.event_rgb_dataset import EventRGBDataset
 from modules.event_data_step import step as event_data_step
 from modules.event_rgb_step import step as event_rgb_step
 from modules.event_lwdetr_step import step as event_lwdetr_step
+from modules.eventrgb_lwdetr_step import step as eventrgb_lwdetr_step
 from modules.lwdetr_official_step import step as lwdetr_official_step
 from modules.lwdetr_official_rgb_step import step as lwdetr_official_rgb_step
 from modules.rgb_step import step as rgb_step
