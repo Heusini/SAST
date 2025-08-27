@@ -76,6 +76,7 @@ class ArmaDataModule(pl.LightningDataModule):
             else:
                 path = list(path)
 
+            shuffle = self.dataset_config.train.shuffle
             for i, dataset_path in enumerate(path):
                 percent_train = use_fraction_train
                 percent_val = use_fraction_val
@@ -88,7 +89,7 @@ class ArmaDataModule(pl.LightningDataModule):
                 self.dataset_config.path = str(dataset_path)
                 train_dataset = self.base_dataset.build(dataset_mode=DatasetMode.TRAIN, 
                                                               dataset_config=self.dataset_config)
-                train_dataset = PartialDataset(train_dataset, percent_train)
+                train_dataset = PartialDataset(train_dataset, percent_train, randomize=shuffle)
                 if self.dataset_config.data_augmentation:
                     train_dataset = AugmentedDataset.build(dataset_config=self.dataset_config, dataset=train_dataset)
                 train_datasets.append(train_dataset)
