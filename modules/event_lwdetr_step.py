@@ -85,7 +85,7 @@ def step(self, data: Any, batch_idx: int, mode: Mode, worker_id):
 
     # we return tokens without threshold right now maybe fix
     sparsity_mask = self.mdl.get_sparsity_mask(fpn_features[0], 0.2)
-    sparsity_mask = sparsity_mask > 0.15
+    sparsity_mask = sparsity_mask > 0.1
     # max = np.max((sparsity_mask.shape[-1], sparsity_mask.shape[-2]))
     # sparsity_mask = th.ones_like(sparsity_mask).to(bool)
     # sparsity_mask, pad = InputPadderFromShape._pad_tensor_impl(sparsity_mask, (max, max), mode='constant', value=False)
