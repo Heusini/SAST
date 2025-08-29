@@ -90,8 +90,8 @@ def main(config: DictConfig):
     time = 0
     empty_again = False
     count = 0
-    max_count = 200
-    skip_num = 2000
+    max_count = 1000
+    skip_num = 1000
     for data in tqdm(event_dataset):
         sequence_len = len(data[DataType.IMAGE])
         for i in range(sequence_len):
@@ -105,13 +105,13 @@ def main(config: DictConfig):
                 count += 1
                 continue
             events = data[DataType.EV_REPR][i].numpy()
-            path = data[DataType.EVENT_PATH]
+            # path = data[DataType.EVENT_PATH]
             events = event_to_image(events)
             rgbs = data[DataType.IMAGE][i]
             rgbs = convert_image(rgbs)
 
             rr.set_time("stable_time", duration=time)
-            rr.log("IMAGE", rr.Image(rgbs, color_model='BGR'))
+            rr.log("IMAGE", rr.Image(rgbs, color_model='RGB'))
             rr.log("event", rr.Image(events, color_model='BGR'))
             rr.log("boxes", rr.Boxes2D(array=bboxes, array_format=Box2DFormat.XYWH))
             time += 0.033
