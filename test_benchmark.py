@@ -69,20 +69,49 @@ def main(config: DictConfig):
     module = fetch_model_module(config=config)
     # module = module.load_from_checkpoint(str(ckpt_path), **{'full_config': config}, strict=True)
     print(ModelSummary(module,max_depth=2))
+    ckpt_path = config.checkpoint
+    if ckpt_path:
+        print('Resuming only the weights instead of the full training state')
+        ckpt = torch.load(ckpt_path, map_location='cpu')
+        state_dict = ckpt["state_dict"]
+
+        backbone_str = "mdl.backbone."
+        backbone_dict = {k.replace(backbone_str, ""): v 
+                     for k, v in state_dict.items() if k.startswith(backbone_str)}
+
+        fpn_str = "mdl.fpn."
+        fpn_dict = {k.replace(fpn_str, ""): v 
+                     for k, v in state_dict.items() if k.startswith(fpn_str)}
+
+        module.mdl.backbone.load_state_dict(backbone_dict, strict=True)
+        module.mdl.fpn.load_state_dict(fpn_dict, strict=True)
+        if config.model.freeze:
+            for param in module.mdl.backbone.parameters():
+                param.requires_grad = False
+
+            for param in module.mdl.fpn.parameters():
+                param.requires_grad = False
+
+            module.mdl.backbone.eval()
+            module.mdl.fpn.eval()
+        ckpt_path = None
+    else:
+        print("no checkpoint")
 
     in_res_hw = tuple(config.model.backbone.in_res_hw)
     input_padder = InputPadderFromShape(desired_hw=in_res_hw)
 
-    data_module.setup('validate')
-    val_loader = data_module.val_dataloader()
-    data = next(iter(val_loader))['data']
-    ev_tensor_sequence = data[DataType.EV_REPR]
-    rgb_sequence = data[DataType.IMAGE]
-    ev_tensors = ev_tensor_sequence[0]
-    rgb_image = rgb_sequence[0]
-    ev_tensors = input_padder.pad_tensor_ev_repr(ev_tensors)
+
+    input_event_path = "/datasets/sheusinger/st_stephan_360_640_20/train/2024_01_10_170509_himo_005/events/event_0.npz"
+    input_img_path = "/datasets/sheusinger/st_stephan_360_640_20/train/2024_01_10_170509_himo_005/rgbs/rgb_0.npz"
+    input_events = np.load(input_event_path)['arr_0']
+    input_image = np.load(input_img_path)['arr_0']
+
+    input_events = torch.from_numpy(input_events).unsqueeze(0)
+    rgb_image = torch.from_numpy(input_image).unsqueeze(0)
+
+    ev_tensors = input_padder.pad_tensor_ev_repr(input_events)
     input_sample = ev_tensors
-    print(input_sample.shape)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     input_sample = input_sample.to(device)
     rgb_image = rgb_image.to(device)
@@ -92,7 +121,7 @@ def main(config: DictConfig):
     print(input_sample.device)
 
     with torch.no_grad():
-        output = measure_average_inference_time(module, input_sample, rgb_image, 500)
+        output = measure_average_inference_time(module, input_sample, rgb_image, 2000)
         print(output)
 
 
