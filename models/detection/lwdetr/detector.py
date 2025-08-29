@@ -103,7 +103,8 @@ class LWDETRDetector(th.nn.Module):
             fpn_features = self.fpn(backbone_features)
         with CudaTimer(th.device('cuda'), "SPARSITY_MASK"):
             sparsity_mask = self.get_sparsity_mask(fpn_features[0], 0.2)
-            sparsity_mask = sparsity_mask > 0.15
+            sparsity_mask = sparsity_mask > 0.12
+            print(sparsity_mask.sum().item())
             sparsity_mask = sparsity_mask.flatten(1,2)
         with CudaTimer(th.device('cuda'), "LWDETR"):
             predictions = self.lwdetr(x.float(), sparsity_mask, None)
