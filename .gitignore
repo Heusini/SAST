@@ -7,3 +7,4 @@ validation_logs/
 .hydra
 *.pth
 *.onnx
+*.engine
