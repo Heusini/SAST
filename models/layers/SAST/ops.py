@@ -133,7 +133,9 @@ class GLU(nn.Module):
         self.act_layer = act_layer()
 
     def forward(self, x: torch.Tensor):
-        x, gate = torch.tensor_split(self.proj(x), 2, dim=self.channel_dim)
+        # x, gate = torch.tensor_split(self.proj(x), 2, dim=self.channel_dim)
+        x, gate = torch.split(self.proj(x), self.proj.out_features // 2, dim=self.channel_dim)
+        # gates, cell_input = th.split(mix, [self.dim * 3, self.dim * 1], dim=1)
         return x * self.act_layer(gate)
     
     

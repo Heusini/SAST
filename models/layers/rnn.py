@@ -54,11 +54,13 @@ class DWSConvLSTM2d(nn.Module):
             xh = self.conv3x3_dws(xh)
         mix = self.conv1x1(xh)
 
-        gates, cell_input = th.tensor_split(mix, [self.dim * 3], dim=1)
+        # gates, cell_input = th.tensor_split(mix, [self.dim * 3], dim=1)
+        gates, cell_input = th.split(mix, [self.dim * 3, self.dim * 1], dim=1)
         assert gates.shape[1] == cell_input.shape[1] * 3
 
         gates = th.sigmoid(gates)
-        forget_gate, input_gate, output_gate = th.tensor_split(gates, 3, dim=1)
+        # forget_gate, input_gate, output_gate = th.tensor_split(gates, 3, dim=1)
+        forget_gate, input_gate, output_gate = th.split(gates, self.dim, dim=1)
         assert forget_gate.shape == input_gate.shape == output_gate.shape
 
         cell_input = self.cell_update_dropout(th.tanh(cell_input))

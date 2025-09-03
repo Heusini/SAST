@@ -92,6 +92,7 @@ class SAST_block(nn.Module):
         B, N, h, w = self.B, self.N, self.partition_size[0], self.partition_size[1]
         temp = 1
         norm_token = (torch.norm(scores, dim=[3], p=1) / temp).view(B * N, -1)[index_window].softmax(-1)
+        norm_token = norm_token.to(torch.int64)
         index_token, asy_index_partition, K = get_score_index_with_padding(norm_token, 1 / (h * w), self.bounce_value) 
         return index_token, asy_index_partition, K
         
@@ -299,10 +300,14 @@ def get_non_zero_ratio(x: torch.Tensor) -> torch.Tensor:
     x_down_16 = torch.nn.functional.max_pool2d(x_down_8, kernel_size=2, stride=2)
     x_down_32 = torch.nn.functional.max_pool2d(x_down_16, kernel_size=2, stride=2)
     # Count the number of non-zero elements in each bin.
-    num_nonzero_1 = torch.sum(torch.sum(x_down_4 != 0, dtype=torch.int16, dim=[2]), dtype=torch.int16, dim=-1)
-    num_nonzero_2 = torch.sum(torch.sum(x_down_8 != 0, dtype=torch.int16, dim=[2]), dtype=torch.int16, dim=-1)
-    num_nonzero_3 = torch.sum(torch.sum(x_down_16 != 0, dtype=torch.int16, dim=[2]), dtype=torch.int16, dim=-1)
-    num_nonzero_4 = torch.sum(torch.sum(x_down_32 != 0, dtype=torch.int16, dim=[2]), dtype=torch.int16, dim=-1)
+    # num_nonzero_1 = torch.sum(torch.sum(x_down_4 != 0, dtype=torch.int16, dim=[2]), dtype=torch.int16, dim=-1)
+    # num_nonzero_2 = torch.sum(torch.sum(x_down_8 != 0, dtype=torch.int16, dim=[2]), dtype=torch.int16, dim=-1)
+    # num_nonzero_3 = torch.sum(torch.sum(x_down_16 != 0, dtype=torch.int16, dim=[2]), dtype=torch.int16, dim=-1)
+    # num_nonzero_4 = torch.sum(torch.sum(x_down_32 != 0, dtype=torch.int16, dim=[2]), dtype=torch.int16, dim=-1)
+    num_nonzero_1 = torch.sum(torch.sum(x_down_4 != 0, dtype=torch.int64, dim=[2]), dtype=torch.int64, dim=-1)
+    num_nonzero_2 = torch.sum(torch.sum(x_down_8 != 0, dtype=torch.int64, dim=[2]), dtype=torch.int64, dim=-1)
+    num_nonzero_3 = torch.sum(torch.sum(x_down_16 != 0, dtype=torch.int64, dim=[2]), dtype=torch.int64, dim=-1)
+    num_nonzero_4 = torch.sum(torch.sum(x_down_32 != 0, dtype=torch.int64, dim=[2]), dtype=torch.int64, dim=-1)
     result1 = x.shape[0] / x_down_4.numel() * num_nonzero_1.float()
     result2 = x.shape[0] / x_down_8.numel() * num_nonzero_2.float()
     result3 = x.shape[0] / x_down_16.numel() * num_nonzero_3.float()

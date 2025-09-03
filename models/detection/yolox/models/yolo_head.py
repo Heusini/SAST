@@ -308,7 +308,7 @@ class YOLOXHead(nn.Module):
 
         # calculate targets
         if labels == None or len(labels) == 0 :
-            nlabel = outputs.new_zeros(outputs.shape[0], dtype=torch.int32)
+            nlabel = outputs.new_zeros(outputs.shape[0], dtype=torch.int64)
         else:
             nlabel = (labels.sum(dim=2) > 0).sum(dim=1)  # number of objects
 

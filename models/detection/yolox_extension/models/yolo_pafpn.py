@@ -46,7 +46,8 @@ class YOLOPAFPN(nn.Module):
 
         ##################################
 
-        self.upsample = lambda x: nn.functional.interpolate(x, scale_factor=2, mode='nearest-exact')
+        # self.upsample = lambda x: nn.functional.interpolate(x, scale_factor=2, mode='nearest-exact')
+        self.upsample = lambda x: nn.functional.interpolate(x, scale_factor=2, mode='nearest')
         self.lateral_conv0 = BaseConv(
             in_channels[2], in_channels[1], 1, 1, act=act
         )
