@@ -592,7 +592,6 @@ def build(args):
     #     num_classes = 3
 
     num_classes = 1
-    device = torch.device(args.device)
 
     backbone = build_backbone(args)
 
@@ -634,7 +633,7 @@ def build(args):
                              use_varifocal_loss = args.use_varifocal_loss,
                              use_position_supervised_loss=args.use_position_supervised_loss,
                              ia_bce_loss=args.ia_bce_loss)
-    criterion.to(device)
+    criterion.to(model.device)
     postprocessors = {'bbox': PostProcess(num_select=args.num_select, height=args.img_height, width=args.img_width)}
 
     model_without_ddp = model
