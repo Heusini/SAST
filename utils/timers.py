@@ -75,7 +75,7 @@ class Timer:
 
 def print_timing_info():
     print('== Timing statistics ==')
-    skip_warmup = 10
+    skip_warmup = 25
     for timer_name, timing_values in [*cuda_timers.items(), *timers.items()]:
         if len(timing_values) <= skip_warmup:
             continue
