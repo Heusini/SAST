@@ -56,10 +56,10 @@ class YoloXDetector(th.nn.Module):
                 targets: Optional[th.Tensor] = None) -> \
             Tuple[Union[th.Tensor, None], Union[Dict[str, th.Tensor], None], LstmStates, th.Tensor]:
         with CudaTimer(th.device('cuda'), "SAST"):
-            backbone_features, _, _ = self.backbone(x, previous_states)
+            backbone_features, states, _ = self.backbone(x, previous_states)
         with CudaTimer(th.device('cuda'), "EVENT_FPN"):
             fpn_features = self.fpn(backbone_features)
         with CudaTimer(th.device('cuda'), "YOLOX"):
-            predictions, _ = self.yolox_head(fpn_features, None)
+            predictions, losses = self.yolox_head(fpn_features, None)
 
-        return predictions
+        return predictions, losses, states

@@ -115,9 +115,10 @@ class Module(pl.LightningModule):
             -> Tuple[th.Tensor, th.Tensor, th.Tensor, th.Tensor]:
 
         with CudaTimer(torch.device('cuda'), "COMPLETE_FORWARD"):
-            output = self.mdl.forward(x=event_tensor,
-                                      rgb_image=rgb_image,
+            output = self.mdl(x=event_tensor,
+                            rgb_image=rgb_image,
                             previous_states=previous_states)
+
         return output
 
     def get_worker_id_from_batch(self, batch: Any) -> int:
