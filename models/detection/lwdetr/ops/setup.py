@@ -23,8 +23,6 @@ requirements = ["torch", "torchvision"]
 def get_extensions():
     this_dir = os.path.dirname(os.path.abspath(__file__))
     extensions_dir = os.path.join(this_dir, "src")
-    modules_dir = os.path.join(this_dir, "modules")
-    functions_dir = os.path.join(this_dir, "functions")
 
     main_file = glob.glob(os.path.join(extensions_dir, "*.cpp"))
     source_cpu = glob.glob(os.path.join(extensions_dir, "cpu", "*.cpp"))
@@ -51,8 +49,6 @@ def get_extensions():
 
     sources = [os.path.join(extensions_dir, s) for s in sources]
     include_dirs = [extensions_dir]
-    include_dirs.append(modules_dir)
-    include_dirs.append(functions_dir)
     ext_modules = [
         extension(
             "MultiScaleDeformableAttention",
@@ -70,7 +66,7 @@ setup(
     author="Weijie Su",
     url="https://github.com/fundamentalvision/Deformable-DETR",
     description="PyTorch Wrapper for CUDA Functions of Multi-Scale Deformable Attention",
-    packages=find_packages(exclude=("configs", "tests",), include=["deform_attn_ops", "deform_attn_ops.*"]),
+    packages=find_packages(exclude=("configs", "tests",)),
     ext_modules=get_extensions(),
     cmdclass={"build_ext": torch.utils.cpp_extension.BuildExtension},
 )
