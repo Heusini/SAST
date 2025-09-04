@@ -633,7 +633,7 @@ def build(args):
                              use_varifocal_loss = args.use_varifocal_loss,
                              use_position_supervised_loss=args.use_position_supervised_loss,
                              ia_bce_loss=args.ia_bce_loss)
-    criterion.to(model.device)
+    criterion.to(args.device)
     postprocessors = {'bbox': PostProcess(num_select=args.num_select, height=args.img_height, width=args.img_width)}
 
     model_without_ddp = model
