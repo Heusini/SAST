@@ -38,6 +38,7 @@ class LWDETRDetector(th.nn.Module):
 
         strides = self.backbone.get_strides(fpn_cfg.in_stages)
         self.lwdetr, self.criterion, self.postprocessors = build_lwdetr(head_cfg)
+        self.create_sparsity_mask = self.get_sparsity_mask
 
     def forward_backbone(self,
                          x: th.Tensor,
@@ -62,10 +63,13 @@ class LWDETRDetector(th.nn.Module):
 
         tokens = (tokens - min_val) / (max_val-min_val + 1e-8)
         if self.max_pool is not None:
-            tokens = self.max_pool(tokens)
+            print(f"{tokens.shape=}")
+            tokens = self.max_pool(tokens.unsqueeze(1))
+            print(f"{tokens.shape=}")
         #     print("max_pool")
-
-        return tokens
+        sparsity_mask = tokens.squeeze(1) > threshold
+        sparsity_mask = sparsity_mask.flatten(1,2)
+        return  sparsity_mask
 
     def forward_detect(self,
                        event_frame: th.Tensor,
@@ -90,6 +94,21 @@ class LWDETRDetector(th.nn.Module):
 
         return predictions, loss_dict
 
+    def export_sparsity(self, fpn_layer, threshold=0.12, true_percentage=20):
+        total_entries = 960
+        num_true = int(true_percentage / 100 * total_entries)
+        num_false = total_entries - num_true
+        mask = th.cat([th.ones(num_true, dtype=th.int32), th.zeros(num_false, dtype=th.int32)])
+        # mask = mask[th.randperm(total_entries)]
+        # mask = mask.to(device)
+        mask = mask.unsqueeze(0)
+        return mask
+
+
+    def export(self):
+        self.lwdetr.export()
+        self.create_sparsity_mask = self.export_sparsity
+
     def forward(self,
                 x: th.Tensor,
                 rgb_image: th.Tensor,
@@ -102,10 +121,7 @@ class LWDETRDetector(th.nn.Module):
         with CudaTimer(th.device('cuda'), "FPN"):
             fpn_features = self.fpn(backbone_features)
         with CudaTimer(th.device('cuda'), "SPARSITY_MASK"):
-            sparsity_mask = self.get_sparsity_mask(fpn_features[0], 0.2)
-            sparsity_mask = sparsity_mask > 0.12
-            print(sparsity_mask.sum().item())
-            sparsity_mask = sparsity_mask.flatten(1,2)
+            sparsity_mask = self.create_sparsity_mask(fpn_features[0], 0.12)
         with CudaTimer(th.device('cuda'), "LWDETR"):
             predictions = self.lwdetr(x.float(), sparsity_mask, None)
 

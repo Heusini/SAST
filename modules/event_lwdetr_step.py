@@ -83,14 +83,7 @@ def step(self, data: Any, batch_idx: int, mode: Mode, worker_id):
     selected_backbone_features = backbone_feature_selector.get_batched_backbone_features()
     fpn_features = self.mdl.forward_fpn(backbone_features=selected_backbone_features)
 
-    # we return tokens without threshold right now maybe fix
-    sparsity_mask = self.mdl.get_sparsity_mask(fpn_features[0], 0.2)
-    sparsity_mask = sparsity_mask > 0.1
-    # max = np.max((sparsity_mask.shape[-1], sparsity_mask.shape[-2]))
-    # sparsity_mask = th.ones_like(sparsity_mask).to(bool)
-    # sparsity_mask, pad = InputPadderFromShape._pad_tensor_impl(sparsity_mask, (max, max), mode='constant', value=False)
-    sparsity_mask = sparsity_mask.flatten(1,2)
-    # print(f"{sparsity_mask.shape=}")
+    sparsity_mask = self.mdl.get_sparsity_mask(fpn_features[0], 0.1)
 
     image_sequence = None
     labels_lwdetr = ObjectLabels.get_labels_as_batched_tensor(obj_label_list=obj_labels, format_='lwdetr')

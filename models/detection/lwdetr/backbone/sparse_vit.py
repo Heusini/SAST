@@ -316,7 +316,7 @@ class SparseViT(nn.Module):
     def export(self):
         self._export = True
         self.pos_embed_export = get_abs_pos(
-            self.pos_embed, self.pretrain_use_cls_token, (40, 40)
+            self.pos_embed, self.pretrain_use_cls_token, (24, 40)
         ).detach()
 
     def _init_weights(self, m):
