@@ -1,5 +1,5 @@
 model:
-  name: lwdetr
+  name: eventrgb
   backbone:
     name: SASTRNN
     compile:
