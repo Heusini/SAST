@@ -39,12 +39,17 @@ def run_command_shell(command, dry_run:bool = False) -> int:
     return status
 
 
-def make_infer_image(device="cuda"):
+def make_infer_event(device="cuda"):
     dummy_img = torch.randint(0, 10, (20, 384, 640), dtype=torch.float32)
     inps = dummy_img.to(device)
     inps = torch.stack([inps for _ in range(1)])
     return inps
 
+def make_infer_image(device="cuda"):
+    dummy_img = torch.randint(0, 10, (3, 384, 640), dtype=torch.float32)
+    inps = dummy_img.to(device)
+    inps = torch.stack([inps for _ in range(1)])
+    return inps
 
 def export_onnx(model, input_names, input_tensors, output_names, dynamic_axes):
     output_file = '/home/sheusinger/sast.onnx'
@@ -102,7 +107,7 @@ def trtexec(onnx_dir:str) -> None:
 
 def main():
      # Load the configuration file
-    config = OmegaConf.load('config/detect.yaml')
+    config = OmegaConf.load('config/detect_lwdetr.yaml')
 
     # device for export onnx
     device = torch.device("cpu")
@@ -121,7 +126,9 @@ def main():
     # Make sure the model is in evaluation mode
     model.eval()
 
-    input_tensors = make_infer_image(device)
+    input_tensors1 = make_infer_event(device)
+    input_tensors2 = make_infer_image(device)
+    input_tensors = (input_tensors1, input_tensors2)
     input_names = ['input']
     output_names = ['dets']
     dynamic_axes = None
