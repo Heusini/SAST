@@ -74,14 +74,18 @@ def compute_gflops(model, dataset, approximated=True, sparsity=0.0):
     if approximated:
         # use just a single image to approximate the full compuation
         # the size of the image was found heuristically
-        images = [torch.rand((1, 20, 384, 640)).cuda().float()]
+        events = [torch.rand((1, 20, 384, 640)).float().cuda()]
+        events[0] = (events[0] > sparsity).float()
+        images = [torch.rand((1, 3, 384, 640)).float().cuda()]
         images[0] = (images[0] > sparsity).float()
 
-        for img in tqdm.tqdm(images):
-            inputs = img.cuda()
+        for img, ev in tqdm.tqdm(zip(images, events)):
+            print(f"{ev.device=}")
+            print(f"{img.device=}")
+            print(f"{model.device=}")
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", category=RuntimeWarning)
-                res = flop_count_without_warnings(model, (inputs,), )[0]
+                res = flop_count_without_warnings(model, (ev,img,), )[0]
             gflops = sum(res.values()) - res['conv']
             gflops_list.append(gflops)
             imsize_list.append(list(img.shape))

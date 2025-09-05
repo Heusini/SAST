@@ -1,5 +1,9 @@
+simplify: True
+gpus: 1
+tensorrt: False
+checkpoint: null
 model:
-  name: lwdetr
+  name: ???
   backbone:
     name: SASTRNN
     compile:
@@ -68,9 +72,3 @@ model:
     nms_threshold: 0.45
 dataset:
   classes: 1
-checkpoint: /home/sheusinger/sast.ckpt                                        ####################
-data_src: /home/sheusinger/SAST/
-data_name: test_data                                                                                  ####################
-half: true                                                                                            ####################                                                                                 ####################
-target_folder: /home/sheusinger/src/RVT/videos/
-use_test_set: false
