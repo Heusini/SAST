@@ -23,8 +23,8 @@ def gflops(model):
     model.eval()
     model = model.cuda()
 
-    dummy_input = torch.randn(1, 3, 384, 640).cuda()
-    rgb_image = torch.randn(1, 20, 384, 640).cuda()
+    dummy_input = torch.randn(1, 20, 384, 640).cuda()
+    rgb_image = torch.randn(1, 3, 384, 640).cuda()
     macs, params = profile(model, inputs=(dummy_input,rgb_image,), verbose=False)
     flops = 2 * macs
 
