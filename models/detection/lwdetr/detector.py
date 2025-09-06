@@ -63,10 +63,7 @@ class LWDETRDetector(th.nn.Module):
 
         tokens = (tokens - min_val) / (max_val-min_val + 1e-8)
         if self.max_pool is not None:
-            print(f"{tokens.shape=}")
             tokens = self.max_pool(tokens.unsqueeze(1))
-            print(f"{tokens.shape=}")
-        #     print("max_pool")
         sparsity_mask = tokens.squeeze(1) > threshold
         sparsity_mask = sparsity_mask.flatten(1,2)
         return  sparsity_mask
