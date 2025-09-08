@@ -96,7 +96,8 @@ def main(config: DictConfig):
             module.mdl.fpn.eval()
         ckpt_path = None
     else:
-        print("no checkpoint")
+        pass
+        # print("no checkpoint")
 
     in_res_hw = tuple(config.model.backbone.in_res_hw)
     input_padder = InputPadderFromShape(desired_hw=in_res_hw)
@@ -107,21 +108,29 @@ def main(config: DictConfig):
     input_events = np.load(input_event_path)['arr_0']
     input_image = np.load(input_img_path)['arr_0']
 
+    frame = torch.from_numpy(input_image)
+    frame = frame.permute(-1, 0, 1)
+    frame = frame / 255.0
+
     input_events = torch.from_numpy(input_events).unsqueeze(0)
-    rgb_image = torch.from_numpy(input_image).unsqueeze(0)
+    frame = frame.unsqueeze(0)
 
     ev_tensors = input_padder.pad_tensor_ev_repr(input_events)
+    frame = input_padder.pad_tensor_ev_repr(frame) 
     input_sample = ev_tensors
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     input_sample = input_sample.to(device)
-    rgb_image = rgb_image.to(device)
+    frame = frame.to(device)
     module.to(device)
     module.eval()
-    print(module.device)
-    print(input_sample.device)
+
+    if config.model.name == "lwdetr_official_rgb":
+        tmp = frame
+        frame = input_sample
+        input_sample = tmp
 
     with torch.no_grad():
-        output = measure_average_inference_time(module, input_sample, rgb_image, 2000)
+        output = measure_average_inference_time(module, input_sample, frame, 2000)
         print(output)
 
 
