@@ -91,8 +91,8 @@ def main(config: DictConfig):
     empty_again = False
     count = 0
     max_count = 1000
-    skip_num = 1000
-    for data in tqdm(augmented):
+    skip_num = 1500
+    for data in tqdm(event_dataset):
         sequence_len = len(data[DataType.IMAGE])
         for i in range(sequence_len):
             bboxes = extract_bounding_boxes(data[DataType.OBJLABELS_SEQ][i].object_labels.numpy()).astype(np.int32)
@@ -147,6 +147,3 @@ def main(config: DictConfig):
 
 if __name__ == "__main__":
     main()
-
-
-
