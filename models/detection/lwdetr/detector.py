@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union, Any, List
 import sys
 
 import torch as th
@@ -17,6 +17,27 @@ from utils.timers import CudaTimer
 from data.utils.types import BackboneFeatures, LstmStates
 from .lwdetr import build as build_lwdetr
 from util.box_ops import box_xyxy_to_cxcywh
+import torch.nn.functional as F
+
+
+def _pad_tensor_impl(input_tensor: th.Tensor, desired_hw: Tuple[int, int], mode: str, value: Any) \
+        -> Tuple[th.Tensor, List[int]]:
+    assert isinstance(input_tensor, th.Tensor)
+
+    ht, wd = input_tensor.shape[-2:]
+    ht_des, wd_des = desired_hw
+    assert ht <= ht_des
+    assert wd <= wd_des
+
+    pad_left = 0
+    pad_right = wd_des - wd
+    pad_top = 0
+    pad_bottom = ht_des - ht
+
+    pad = [pad_left, pad_right, pad_top, pad_bottom]
+    print(pad)
+    print(input_tensor.shape)
+    return F.pad(input_tensor, pad=pad, mode=mode, value=value if mode == 'constant' else None), pad
 
 class LWDETRDetector(th.nn.Module):
     def __init__(self,
@@ -114,13 +135,15 @@ class LWDETRDetector(th.nn.Module):
                 targets: Optional[th.Tensor] = None) -> \
             Tuple[Union[th.Tensor, None], Union[Dict[str, th.Tensor], None], LstmStates, th.Tensor]:
         with CudaTimer(th.device('cuda'), "SAST"):
-            backbone_features, _, _ = self.backbone(x, previous_states)
+            event_frame, _ = _pad_tensor_impl(x, (384, 640), mode='constant', value=0)
+            backbone_features, state, _ = self.backbone(event_frame, previous_states)
         with CudaTimer(th.device('cuda'), "FPN"):
             fpn_features = self.fpn(backbone_features)
         with CudaTimer(th.device('cuda'), "SPARSITY_MASK"):
             sparsity_mask = self.create_sparsity_mask(fpn_features[0], 0.12)
         with CudaTimer(th.device('cuda'), "LWDETR"):
             predictions = self.lwdetr(x.float(), sparsity_mask, None)
+            predictions = self.postprocessors['bbox'](predictions)
 
-        return predictions
+        return predictions, sparsity_mask, state, fpn_features
 

@@ -60,6 +60,6 @@ class YoloXDetector(th.nn.Module):
         with CudaTimer(th.device('cuda'), "EVENT_FPN"):
             fpn_features = self.fpn(backbone_features)
         with CudaTimer(th.device('cuda'), "YOLOX"):
-            predictions, losses = self.yolox_head(fpn_features, None)
+            predictions, _ = self.yolox_head(fpn_features, None)
 
-        return predictions, losses, states
+        return predictions, states
