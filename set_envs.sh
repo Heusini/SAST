@@ -6,5 +6,4 @@ echo "Using GPU(s): ${GPUS}"
 export lr=$(python -c "import math; print(2e-4*math.sqrt(${BATCH_SIZE_PER_GPU}*${GPU_NUMBER}/8))") 
 echo "Learning rate: ${lr}"
 
-export DATA_DIR_NERD="/datasets/sheusinger/nerd_360_640_20_new"
-
+export DATA_DIR="datadir"
