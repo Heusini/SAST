@@ -80,7 +80,7 @@ def draw_and_display(img_data, masks, bboxes,image = None,predictions =None, win
         new_bb = bboxes
         new_bb[:, 2:] += new_bb[:, :2]
         new_bb = new_bb.astype(np.int32)
-        img = bbv.draw_multiple_rectangles(img, new_bb.tolist(), thickness=2)
+        img = bbv.draw_multiple_rectangles(img, new_bb.tolist(), thickness=1)
     if predictions is not None:
         new_pred = []
         for p in predictions:
@@ -95,7 +95,7 @@ def draw_and_display(img_data, masks, bboxes,image = None,predictions =None, win
             new_pred.extend(pred)
         print(new_pred)
         if len(new_pred) > 0:
-            img = bbv.draw_multiple_rectangles(img, new_pred, bbox_color=(0,0,255), thickness=1)
+            img = bbv.draw_multiple_rectangles(img, new_pred, bbox_color=(255,0,0), thickness=1)
 
     for y_i in range(height):
         for x_i in range(width):
@@ -114,15 +114,16 @@ def draw_and_display(img_data, masks, bboxes,image = None,predictions =None, win
     # img = cv2.resize(img, (1280, 720), interpolation=cv2.INTER_LINEAR)
     out_img = np.hstack([img, heatmap])
     if image is not None:
+        print(f"{image.shape=}")
         image = image.squeeze(0).permute(1,2,0).numpy()
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         image = image * 255
         image = image.astype(np.uint8)
         if bboxes is not None:
-            image = bbv.draw_multiple_rectangles(image, new_bb.tolist(), thickness=2)
+            image = bbv.draw_multiple_rectangles(image, new_bb.tolist(), thickness=1)
         if predictions is not None:
             if len(new_pred) > 0:
-                image = bbv.draw_multiple_rectangles(image, new_pred, thickness=1, bbox_color=(0, 0, 255))
+                image = bbv.draw_multiple_rectangles(image, new_pred, thickness=1, bbox_color=(255, 0, 0))
 
         out_img = np.hstack([out_img, image])
     cv2.imshow(window_name, out_img)
@@ -204,26 +205,34 @@ def main(config: DictConfig):
         print('Resuming only the weights instead of the full training state')
         ckpt = torch.load(ckpt_path, map_location='cpu')
         state_dict = ckpt["state_dict"]
+        mdl_str = "mdl."
+        mdl_dict = {k.replace(mdl_str, ""): v 
+                     for k, v in state_dict.items() if k.startswith(mdl_str)}
+        module.mdl.load_state_dict(mdl_dict, strict=True)
+    # if ckpt_path:
+    #     print('Resuming only the weights instead of the full training state')
+    #     ckpt = torch.load(ckpt_path, map_location='cpu')
+    #     state_dict = ckpt["state_dict"]
 
-        backbone_str = "mdl.backbone."
-        backbone_dict = {k.replace(backbone_str, ""): v 
-                     for k, v in state_dict.items() if k.startswith(backbone_str)}
+    #     backbone_str = "mdl.backbone."
+    #     backbone_dict = {k.replace(backbone_str, ""): v 
+    #                  for k, v in state_dict.items() if k.startswith(backbone_str)}
 
-        fpn_str = "mdl.fpn."
-        fpn_dict = {k.replace(fpn_str, ""): v 
-                     for k, v in state_dict.items() if k.startswith(fpn_str)}
+    #     fpn_str = "mdl.fpn."
+    #     fpn_dict = {k.replace(fpn_str, ""): v 
+    #                  for k, v in state_dict.items() if k.startswith(fpn_str)}
 
-        module.mdl.backbone.load_state_dict(backbone_dict, strict=True)
-        module.mdl.fpn.load_state_dict(fpn_dict, strict=True)
-        for param in module.mdl.backbone.parameters():
-            param.requires_grad = False
+    #     module.mdl.backbone.load_state_dict(backbone_dict, strict=True)
+    #     module.mdl.fpn.load_state_dict(fpn_dict, strict=True)
+    #     for param in module.mdl.backbone.parameters():
+    #         param.requires_grad = False
 
-        for param in module.mdl.fpn.parameters():
-            param.requires_grad = False
+    #     for param in module.mdl.fpn.parameters():
+    #         param.requires_grad = False
 
-            module.mdl.backbone.eval()
-            module.mdl.fpn.eval()
-        ckpt_path = None
+    #         module.mdl.backbone.eval()
+    #         module.mdl.fpn.eval()
+    #     ckpt_path = None
 
     module.eval()
     # Get a batch (or a single sample wrapped as batch)
@@ -237,6 +246,7 @@ def main(config: DictConfig):
     mdl_config = config.model
 
     max_pool = nn.MaxPool2d(2,2)
+    previous_states = None
     for batch in val_loader:
         data = batch['data']
         with torch.no_grad():
@@ -260,23 +270,26 @@ def main(config: DictConfig):
                         new_bb = bboxes.object_labels[:, 1:5]
                         new_bbs = np.vstack(new_bb)
 
-                    preds, _, _ = module.mdl.backbone(ev_tensors)
+                    preds, states, _ = module.mdl.backbone(ev_tensors, previous_states)
+                    previous_states = states
                     # for i in range(len(preds)):
                     #     print(preds[i].shape)
                     preds = module.mdl.fpn(preds)
-                    rgb_preds = module.mdl.rgb_fpn(image)
-                    features = []
-                    for f, r in zip(preds, rgb_preds):
-                        intermediate_features = torch.add(f, r)
-                        features.append(intermediate_features)
 
-                    output, _ = module.mdl.yolox_head(features)
+                    print(preds[0].shape)
+                    print(preds[1].shape)
+                    print(preds[2].shape)
+                    preds[0][:, :, 33:48, :] = 0
+                    preds[1][:, :, 0:24, :] = 0
+                    preds[2][:, :, 0:12, :] = 0
+
+                    output, _ = module.mdl.yolox_head(preds)
                     pred_processed = postprocess(prediction=output,
                                                  num_classes=mdl_config.head.num_classes,
                                                  conf_thre=mdl_config.postprocess.confidence_threshold,
                                                  nms_thre=mdl_config.postprocess.nms_threshold)
-                    print(pred_processed)
-                    print(new_bbs)
+                    print(f"{pred_processed=}")
+                    print(f"{new_bbs=}")
                     # for i in range(len(preds)):
                     #     preds[i] = max_pool(preds[i])
                     # preds = [preds[i] for i in [1, 2, 3, 4]]

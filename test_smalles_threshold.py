@@ -84,6 +84,10 @@ def is_fully_included(box_xywh, patch_mask) -> bool:
     return is_percent_included(box_xywh, patch_mask, 1)
 
 def is_percent_included(box_xywh, patch_mask, percent) -> bool:
+    fully_included, area = get_box_area_and_included_area(box_xywh, patch_mask)
+    return fully_included >= box_xywh[2] * box_xywh[3] * percent
+
+def get_box_area_and_included_area(box_xywh, patch_mask) -> bool:
     box_xyxy = box_xywh.clone()
     box_xyxy[2:] += box_xyxy[:2]
     x_min = int(box_xyxy[0])
@@ -95,7 +99,7 @@ def is_percent_included(box_xywh, patch_mask, percent) -> bool:
     mask[y_min:y_max+1, x_min:x_max+1] = 1
 
     fully_included = th.bitwise_and(pt_mask, mask).sum()
-    return fully_included >= box_xywh[2] * box_xywh[3] * percent
+    return fully_included, box_xywh[2] * box_xywh[3]
 
 def extract_boxes(boxes, sequence_length):
     new_boxes = []
@@ -123,6 +127,9 @@ def calculate_included(sparsity_masks, labels, rr, start_time, image):
     time = start_time
     all_boxes = 0
     included_boxes = 0
+    partly_included = 0
+    not_included_count = 0
+    fully_included = 0
     assert len(sparsity_masks) == len(labels) and len(labels) == len(image)
     for sp, ll, img in zip(sparsity_masks, labels, image):
         boxes = ll.object_labels[:, 1:5]
@@ -130,11 +137,15 @@ def calculate_included(sparsity_masks, labels, rr, start_time, image):
         included = []
         for i, bb in enumerate(boxes):
             all_boxes += 1
-            if is_percent_included(bb, sp, 0.5):
+            included_patch, box_area = get_box_area_and_included_area(bb, sp)
+            if included_patch >= box_area:
+                fully_included += 1
+            if included_patch >= box_area * 0.01:
                 included_boxes += 1
                 included.append(i)
             else:
                 not_included.append(i)
+                not_included_count += 1
         if LOGGING and len(not_included) > 0: 
             rr.set_time("stable_time", duration=time)
             heatmap = sparsity_to_image(sp)
@@ -145,7 +156,7 @@ def calculate_included(sparsity_masks, labels, rr, start_time, image):
             rr.log("BOXES_INCLUDED", rr.Boxes2D(array=boxes[included], array_format=Box2DFormat.XYWH))
 
             time+=1
-    return all_boxes, included_boxes, time
+    return all_boxes, included_boxes, time, fully_included
 
 
 @hydra.main(config_path='config', config_name='train', version_base='1.2')
@@ -165,7 +176,8 @@ def main(config: DictConfig):
     model.to(device)
 
 
-    thresholds = [0.05, 0.07, 0.09, 0.1, 0.12, 0.13, 0.2, 0.5, 0.8]
+    # thresholds = [0.05, 0.07, 0.09, 0.1, 0.12, 0.13, 0.2, 0.5, 0.8]
+    thresholds = [0.1]
     batch_count = 0
     max_batch_count = 10
     time = 0
@@ -179,6 +191,7 @@ def main(config: DictConfig):
         time = 0
         all_boxes = 0
         all_included = 0
+        fully_included = 0
         count = 0
         for batch in tqdm(train_loader):
             with th.autocast(device_type='cuda', dtype=th.float16):
@@ -193,11 +206,13 @@ def main(config: DictConfig):
                 fpn_output = model.mdl.fpn(backbone_features)
                 sparsity_mask = get_sparsity_mask(fpn_output[0])
                 sparsity_mask = sparsity_mask > threshold
-                all, included, time = calculate_included(sparsity_mask, boxes, rr, time, image)
+                all, included, time, full_included = calculate_included(sparsity_mask, boxes, rr, time, image)
                 all_boxes += all
                 all_included += included
+                fully_included += full_included
 
-        print(f"Threshold: {threshold}: All_boxes: {all_boxes} Included_boxes: {all_included}")
+
+        print(f"Threshold: {threshold}: All_boxes: {all_boxes} Included_boxes: {all_included} fully_included: {fully_included}")
 
 
 if __name__ == '__main__':

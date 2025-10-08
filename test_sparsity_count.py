@@ -33,11 +33,12 @@ from config.modifier import dynamically_modify_train_config
 from modules.utils.fetch import fetch_data_module, fetch_model_module
 from data.utils.types import DataType, LstmStates, ObjDetOutput, DatasetSamplingMode, BackboneFeatures
 from utils.padding import InputPadderFromShape
+from tqdm import tqdm
 
 import matplotlib.pyplot as plt
 from benchmark import measure_average_inference_time
 
-PATH = Path("/datasets/sheusinger/st_stephan_360_640_20/")
+PATH = Path("/datasets/sheusinger/nerd_360_640_20_new")
 
 def get_sparsity_mask(fpn_layer: th.Tensor, threshold = 0.7):
     max_pool = nn.MaxPool2d(2, 2)
@@ -120,7 +121,7 @@ def main(config: DictConfig):
     module.eval()
     total_count = 0
     event_count = 0
-    for path in paths:
+    for path in tqdm(paths):
         events_path = path / "events"
         for ev_name in os.listdir(events_path):
             event_count += 1
@@ -132,9 +133,9 @@ def main(config: DictConfig):
             preds, _, _ = module.mdl.backbone(ev_tensors)
             preds = module.mdl.fpn(preds)
             sparsity_mask = get_sparsity_mask(preds[0])
-            sparsity_mask = sparsity_mask > 0.12
-            print(f"{sparsity_mask.sum().item()=}")
-            print(f"{sparsity_mask.shape=}")
+            sparsity_mask = sparsity_mask > 0.1
+            # print(f"{sparsity_mask.sum().item()=}")
+            # print(f"{sparsity_mask.shape=}")
             total_count += sparsity_mask.sum().item()
             # print(total_count)
 

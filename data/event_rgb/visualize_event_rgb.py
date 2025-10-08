@@ -78,7 +78,7 @@ def event_to_image(event):
 def main(config: DictConfig):
     OmegaConf.to_container(config, resolve=True, throw_on_missing=False)
     event_dataset = EventRGBDataset.build(DatasetMode.TRAIN, config.dataset)
-    partial = PartialDataset(event_dataset, 0.2, True)
+    partial = PartialDataset(event_dataset, 1, True)
     augmented = AugmentedDataset.build(config.dataset, partial)
 
     skip = True
@@ -90,9 +90,9 @@ def main(config: DictConfig):
     time = 0
     empty_again = False
     count = 0
-    max_count = 1000
-    skip_num = 1500
-    for data in tqdm(event_dataset):
+    max_count = 500
+    skip_num = 0
+    for data in tqdm(partial):
         sequence_len = len(data[DataType.IMAGE])
         for i in range(sequence_len):
             bboxes = extract_bounding_boxes(data[DataType.OBJLABELS_SEQ][i].object_labels.numpy()).astype(np.int32)

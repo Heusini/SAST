@@ -37,7 +37,7 @@ def gflops(model):
 @hydra.main(config_path='config', config_name='detect', version_base='1.2')
 def main(config: DictConfig):
      # Load the configuration file
-    OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
+    OmegaConf.to_container(config, resolve=True, throw_on_missing=False)
     model_name = config.model.name
     
 
