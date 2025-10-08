@@ -13,7 +13,7 @@ train:
   #   w_random: 1
 validation:
   use_fraction: 1
-  shuffle: True
+  shuffle: False
 eval:
   sampling: 'stream'
 data_augmentation:
