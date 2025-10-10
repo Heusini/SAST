@@ -1,8 +1,9 @@
+This is a modified copy of [SAST](https://github.com/Peterande/SAST). It includes different models that make use of the SAST architecture. 
+
 # [SAST: Scene Adaptive Sparse Transformer for Event-based Object Detection (CVPR24)](https://arxiv.org/abs/2404.01882)
 <p align="center">
   <img src="figures/Fig1.png" width="750">
 </p>
-This is the official Pytorch implementation of the CVPR 2024 paper "Scene Adaptive Sparse Transformer for Event-based Object Detection"
 
 ## Probably the first sparse transformer to implement window-token co-sparsification. Feel free to use its principle to sparse whatever you want.
 
@@ -119,6 +120,7 @@ use_test_set=${USE_TEST} hardware.gpus=${GPU_ID} batch_size.eval=4 +experiment/g
 
 ## Code Acknowledgments
 This project has used code from the following projects:
+- [SAST](https://github.com/Peterande/SAST) for the SAST architecture
 - [RVT](https://github.com/uzh-rpg/RVT) for the RVT architecture implementation in Pytorch
 - [timm](https://github.com/huggingface/pytorch-image-models) for the original MaxViT layer implementation in Pytorch
 - [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX) for the detection PAFPN/head
