@@ -47,7 +47,7 @@ hardware.num_workers.eval=2 batch_size.eval=${BATCH_SIZE_PER_GPU}
 hardware.gpus=[${GPUS}] +experiment/gen4="base.yaml" 
 training.learning_rate=${lr} validation.val_check_interval=10000
 ```
-## Models to set
+## Models that can be selected
 The model= parameter can be one of those:
 - rnndet
 - lwdetr
@@ -66,11 +66,28 @@ Using SAST as a model to create sparsified masks:
 ### eventrgb
 - needs both modalities RGB and event data
 
+# Model performance
+<p align="center">
+  <img src="figures/performance.png" width="750">
+</p>
+
+StStephan is a subset of the F-UAV-D dataset
+
+The table names map to the model parameter like this:
+- SAST = rnndet
+- YOLOX-RGB = rgb
+- SAST+RGB = eventrgb
+- SAST+LWDETR = lwdetr
+- SAST-Pretrained+LWDETR = lwdetr (checkpoint from training SAST on StStephan)
 
 ## Example
 
 ```bash
 python train.py model=eventrgb dataset=eventrgb dataset.path="${DATA_DIR_NERD}" wandb.project_name=NERD_NEW wandb.group_name=rgb batch_size.train=4 batch_size.eval=4 hardware.gpus=\[${GPUS}\] +experiment/arma="base.yaml" training.learning_rate=${lr} dataset.train.use_fraction=1 dataset.validation.use_fraction=1
+```
+
+```bash
+python train.py model=rgb dataset=eventrgb dataset.path="${DATA_DIR_NERD}" wandb.project_name=NERD_NEW wandb.group_name=rgb batch_size.train=4 batch_size.eval=4 hardware.gpus=\[${GPUS}\] +experiment/arma="base.yaml" training.learning_rate=${lr} dataset.train.use_fraction=1 dataset.validation.use_fraction=1 fpn.ckpt=yolox_s.pth
 ```
 
 ## Code Acknowledgments
