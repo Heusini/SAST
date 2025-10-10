@@ -33,7 +33,7 @@ class EventRGBDetector(th.nn.Module):
         strides = self.backbone.get_strides(fpn_cfg.in_stages)
         self.fpn = build_yolox_fpn(fpn_cfg, in_channels=in_channels)
         self.rgb_fpn = YOLOPAFPN(0.33, 0.5) 
-        yolox_path = "./yolox_s.pth"
+        yolox_path = fpn_cfg.ckpt
         # yolox_path = None
         if yolox_path:
             ckpt = th.load(yolox_path, map_location='cpu')

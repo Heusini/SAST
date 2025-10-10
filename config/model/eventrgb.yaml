@@ -7,5 +7,6 @@ backbone:
   name: ???
 fpn:
   name: ???
+  ckpt: "yolox_s.pth"
 head:
   name: ???

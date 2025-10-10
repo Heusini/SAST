@@ -20,6 +20,7 @@ def build_yolox_head(head_cfg: DictConfig, in_channels: Tuple[int, ...], strides
 def build_yolox_fpn(fpn_cfg: DictConfig, in_channels: Tuple[int, ...]):
     fpn_cfg_dict = OmegaConf.to_container(fpn_cfg, resolve=True, throw_on_missing=True)
     fpn_name = fpn_cfg_dict.pop('name')
+    fpn_ckpt = fpn_cfg_dict.pop('ckpt')
     fpn_cfg_dict.update({"in_channels": in_channels})
     if fpn_name in {'PAFPN', 'pafpn'}:
         compile_cfg = fpn_cfg_dict.pop('compile', None)
