@@ -33,7 +33,7 @@ class RGBDetector(th.nn.Module):
         in_channels = backbone.get_stage_dims(fpn_cfg.in_stages)
         strides = backbone.get_strides(fpn_cfg.in_stages)
 
-        yolox_path = "./yolox_s.pth"
+        yolox_path = fpn_cfg.ckpt
         # yolox_path = None
         if yolox_path:
             ckpt = th.load(yolox_path, map_location='cpu')
