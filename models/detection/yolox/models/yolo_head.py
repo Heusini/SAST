@@ -2,6 +2,7 @@
 Original Yolox Head code with slight modifications
 """
 import math
+import sys
 from typing import Dict, Optional
 
 import torch
@@ -133,7 +134,9 @@ class YOLOXHead(nn.Module):
             )
 
         self.use_l1 = False
+        self.use_l2 = False
         self.l1_loss = nn.L1Loss(reduction="none")
+        # self.l2_center_loss = nn.MSELoss(reduction="none")
         self.bcewithlog_loss = nn.BCEWithLogitsLoss(reduction="none")
         self.iou_loss = IOUloss(reduction="none")
         self.strides = strides
@@ -162,7 +165,7 @@ class YOLOXHead(nn.Module):
             b.data.fill_(-math.log((1 - prior_prob) / prior_prob))
             conv.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
 
-    def forward(self, xin, labels=None):
+    def forward(self, xin, labels=None, return_loss=True):
         train_outputs = []
         inference_outputs = []
         origin_preds = []
@@ -184,7 +187,7 @@ class YOLOXHead(nn.Module):
             reg_output = self.reg_preds[k](reg_feat)
             obj_output = self.obj_preds[k](reg_feat)
 
-            if self.training:
+            if self.training or return_loss:
                 output = torch.cat([reg_output, obj_output, cls_output], 1)
                 output, grid = self.get_output_and_grid(
                     output, k, stride_this_level, xin[0].type()
@@ -216,7 +219,7 @@ class YOLOXHead(nn.Module):
         # Modification: return decoded output also during training
         # --------------------------------------------------------
         losses = None
-        if self.training:
+        if labels is not None and (self.training or return_loss):
             losses =  self.get_losses(
                 x_shifts,
                 y_shifts,
@@ -233,6 +236,7 @@ class YOLOXHead(nn.Module):
                 "conf_loss": losses[2], # object-ness
                 "cls_loss": losses[3], # predicted class
                 "l1_loss": losses[4],
+                # "l2_loss": losses[5],
                 "num_fg": losses[5],
             }
         self.hw = [x.shape[-2:] for x in inference_outputs]
@@ -303,7 +307,22 @@ class YOLOXHead(nn.Module):
         cls_preds = outputs[:, :, 5:]  # [batch, n_anchors_all, n_cls]
 
         # calculate targets
-        nlabel = (labels.sum(dim=2) > 0).sum(dim=1)  # number of objects
+        if labels == None or len(labels) == 0 :
+            nlabel = outputs.new_zeros(outputs.shape[0], dtype=torch.int32)
+        else:
+            nlabel = (labels.sum(dim=2) > 0).sum(dim=1)  # number of objects
+
+        if len(nlabel) < outputs.shape[0]:
+            print("probably error with labels")
+            print(f"{labels=}")
+            print(f"{labels.shape=}")
+            print()
+            print(f"{nlabel=}")
+            print(f"{nlabel.shape=}")
+            print()
+            print(f"{outputs.shape=}")
+            print("label error finish")
+
 
         total_num_anchors = outputs.shape[1]
         x_shifts = torch.cat(x_shifts, 1)  # [1, n_anchors_all]
@@ -315,6 +334,7 @@ class YOLOXHead(nn.Module):
         cls_targets = []
         reg_targets = []
         l1_targets = []
+        # l2_targets = []
         obj_targets = []
         fg_masks = []
 
@@ -396,6 +416,14 @@ class YOLOXHead(nn.Module):
                         x_shifts=x_shifts[0][fg_mask],
                         y_shifts=y_shifts[0][fg_mask],
                     )
+                if self.use_l2:
+                    l2_target = self.get_l2_target(
+                        outputs.new_zeros((num_fg_img, 2)),
+                        gt_bboxes_per_image[matched_gt_inds],
+                        expanded_strides[0][fg_mask],
+                        x_shifts=x_shifts[0][fg_mask],
+                        y_shifts=y_shifts[0][fg_mask],
+                        )
 
             cls_targets.append(cls_target)
             reg_targets.append(reg_target)
@@ -403,6 +431,8 @@ class YOLOXHead(nn.Module):
             fg_masks.append(fg_mask)
             if self.use_l1:
                 l1_targets.append(l1_target)
+            if self.use_l2:
+                l2_targets.append(l2_target)
 
         cls_targets = torch.cat(cls_targets, 0)
         reg_targets = torch.cat(reg_targets, 0)
@@ -410,6 +440,8 @@ class YOLOXHead(nn.Module):
         fg_masks = torch.cat(fg_masks, 0)
         if self.use_l1:
             l1_targets = torch.cat(l1_targets, 0)
+        if self.use_l2:
+            l2_targets = reg_targets[:, :2]
 
         num_fg = max(num_fg, 1)
         loss_iou = (
@@ -423,6 +455,7 @@ class YOLOXHead(nn.Module):
                 cls_preds.view(-1, self.num_classes)[fg_masks], cls_targets
             )
         ).sum() / num_fg
+
         if self.use_l1:
             loss_l1 = (
                 self.l1_loss(origin_preds.view(-1, 4)[fg_masks], l1_targets)
@@ -430,8 +463,16 @@ class YOLOXHead(nn.Module):
         else:
             loss_l1 = 0.0
 
+        if self.use_l2:
+            loss_l2 = (
+                    self.l2_center_loss(bbox_preds.view(-1, 4)[fg_masks][:,:2], l2_targets)
+            ).sum() / num_fg
+        else:
+            loss_l2 = 0.0
+
         reg_weight = 5.0
-        loss = reg_weight * loss_iou + loss_obj + loss_cls + loss_l1
+        l2_weight = 1
+        loss = reg_weight * loss_iou + loss_obj + loss_cls + loss_l1 + l2_weight * loss_l2
 
         return (
             loss,
@@ -439,6 +480,7 @@ class YOLOXHead(nn.Module):
             loss_obj,
             loss_cls,
             loss_l1,
+            # l2_weight * loss_l2,
             num_fg / max(num_gts, 1),
         )
 
@@ -448,6 +490,10 @@ class YOLOXHead(nn.Module):
         l1_target[:, 2] = torch.log(gt[:, 2] / stride + eps)
         l1_target[:, 3] = torch.log(gt[:, 3] / stride + eps)
         return l1_target
+    def get_l2_target(self, l2_target, gt, stride, x_shifts, y_shifts, eps=1e-8):
+        l2_target[:, 0] = gt[:, 0] / stride - x_shifts
+        l2_target[:, 1] = gt[:, 1] / stride - y_shifts
+        return l2_target
 
     @torch.no_grad()
     def get_assignments(

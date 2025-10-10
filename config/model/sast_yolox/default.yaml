@@ -49,6 +49,7 @@ model:
     depth: 0.67 # round(depth * 3) == num bottleneck blocks
     # stage 1 is the first and len(num_layers) is the last
     in_stages: [2, 3, 4]
+    # in_stages: [1, 2, 3]
     depthwise: False
     act: "silu"
   head:

@@ -10,7 +10,7 @@ except ImportError:
 
 from ...recurrent_backbone import build_recurrent_backbone
 from .build import build_yolox_fpn, build_yolox_head
-from utils.timers import TimerDummy as CudaTimer
+from utils.timers import CudaTimer
 
 from data.utils.types import BackboneFeatures, LstmStates
 
@@ -36,8 +36,7 @@ class YoloXDetector(th.nn.Module):
                          previous_states: Optional[LstmStates] = None,
                          token_mask: Optional[th.Tensor] = None) -> \
             Tuple[BackboneFeatures, LstmStates, th.Tensor]:
-        with CudaTimer(device=x.device, timer_name="Backbone"):
-            backbone_features, states, p = self.backbone(x, previous_states, token_mask)
+        backbone_features, states, p = self.backbone(x, previous_states, token_mask)
         return backbone_features, states, p
 
     def forward_detect(self,
@@ -45,28 +44,22 @@ class YoloXDetector(th.nn.Module):
                        targets: Optional[th.Tensor] = None) -> \
             Tuple[th.Tensor, Union[Dict[str, th.Tensor], None]]:
         device = next(iter(backbone_features.values())).device
-        with CudaTimer(device=device, timer_name="FPN"):
-            fpn_features = self.fpn(backbone_features)
-        if self.training:
-            assert targets is not None
-            with CudaTimer(device=device, timer_name="HEAD + Loss"):
-                outputs, losses = self.yolox_head(fpn_features, targets)
-            return outputs, losses
-        with CudaTimer(device=device, timer_name="HEAD"):
-            outputs, losses = self.yolox_head(fpn_features)
-        assert losses is None
+        fpn_features = self.fpn(backbone_features)
+        outputs, losses = self.yolox_head(fpn_features, targets)
         return outputs, losses
 
     def forward(self,
                 x: th.Tensor,
+                rgb_image: th.Tensor,
                 previous_states: Optional[LstmStates] = None,
                 retrieve_detections: bool = True,
                 targets: Optional[th.Tensor] = None) -> \
             Tuple[Union[th.Tensor, None], Union[Dict[str, th.Tensor], None], LstmStates, th.Tensor]:
-        backbone_features, states, p, _, _ = self.forward_backbone(x, previous_states)
-        outputs, losses = None, None
-        if not retrieve_detections:
-            assert targets is None
-            return outputs, losses, states
-        outputs, losses = self.forward_detect(backbone_features=backbone_features, targets=targets)
-        return outputs, losses, states, p
+        with CudaTimer(th.device('cuda'), "SAST"):
+            backbone_features, states, _ = self.backbone(x, previous_states)
+        with CudaTimer(th.device('cuda'), "EVENT_FPN"):
+            fpn_features = self.fpn(backbone_features)
+        with CudaTimer(th.device('cuda'), "YOLOX"):
+            predictions, _ = self.yolox_head(fpn_features, None)
+
+        return predictions, states

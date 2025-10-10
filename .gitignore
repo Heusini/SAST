@@ -1,0 +1,10 @@
+**/__pycache__/
+*.ckpt
+wandb/
+outputs/
+output
+validation_logs/
+.hydra
+*.pth
+*.onnx
+*.engine

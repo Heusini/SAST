@@ -1,0 +1,109 @@
+defaults:
+  - base
+name: lwdetr_official_rgb
+head:
+  name: lwdetr
+  num_classes: 1
+  lr: 0.0001 #1e-4
+  lr_encoder: 0.00015 #1.5e-4
+
+  lr_decay_rate: 0.1
+  min_lr: 0.0000001 #1e-7
+
+  batch_size: 4
+  weight_decay: 0.0001 #1e-4
+  epochs: 100
+  clip_max_norm: 1.0
+  lr_vit_layer_decay: 0.8
+  lr_component_decay: 0.7
+
+  dropout: 0
+  drop_path: 0
+  drop_mode: 'standard'
+  drop_schedule: 'constant'
+  cutoff_epoch: 0
+
+  # Sparsity params
+  sparse_threshold: 100
+  sparse_min_tokens: 10
+
+  pretrained_encoder: null
+  # Finetune armasuisse checkpoint
+
+  pretrain_weights: null
+  # pretrain_weights: './LWDETR_tiny2.pth'
+  pretrain_exclude_keys: ['transformer.enc_out_class_embed', 'class_embed', 'backbone.0.encoder.patch_embed.proj.weight']
+  pretrain_keys_modify_to_load: null
+  encoder: 'vit_tiny'
+  patch_size: 16
+  vit_encoder_num_layers: 6
+  window_block_indexes: [0, 2, 4]
+  position_embedding: 'sine'
+  out_feature_indexes: [1, 3, 5]
+  dec_layers: 3
+  dim_feedforward: 2048
+  hidden_dim: 256
+  sa_nheads: 8
+  ca_nheads: 16
+  num_queries: 100
+  group_detr: 13
+  two_stage: true
+  projector_scale: ['P4']
+  num_feature_levels: 1
+  lite_refpoint_refine: true
+  num_select: 100
+  dec_n_points: 2
+  decoder_norm: 'LN'
+  bbox_reparam: true
+  img_height: 360
+  img_width: 640
+
+  set_cost_class: 2
+  set_cost_bbox: 5
+  set_cost_giou: 2
+
+  cls_loss_coef: 1
+  bbox_loss_coef: 5
+  giou_loss_coef: 2
+  focal_alpha: 0.25
+  aux_loss: false
+  sum_group_losses: false
+  use_varifocal_loss: false
+  use_position_supervised_loss: false
+  ia_bce_loss: true
+
+  # dataset_file: "armasuisse_split"
+  dataset_file: "armasuisse"
+  in_channels: 3
+  square_resize_div_64: true
+
+  output_dir: 'output/no_missing'
+  checkpoint_interval: 10
+  seed: 42
+  resume: false
+  start_epoch: 0
+  eval: false
+  use_ema: true
+  ema_decay: 0.9997
+  num_workers: 2
+
+  device: 'cuda:0'
+  world_size: 1
+  dist_url: 'env://'
+  sync_bn: true
+
+  fp16_eval: false
+
+  # Export parameter
+  # subcommand: null # 'export_model'
+  # shape: [640, 640]
+  # infer_dir: null
+  # verbose: false
+  # opset_version: 17
+  # simplify: true
+  # tensorrt: true
+  # dry_run: false
+postprocess:
+  confidence_threshold: 0.01
+  nms_threshold: 0.45
+

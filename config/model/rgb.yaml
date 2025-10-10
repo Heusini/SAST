@@ -1,0 +1,10 @@
+defaults:
+  - base
+
+name: rgb
+backbone:
+  name: ???
+fpn:
+  ckpt: "yolox_s.pth"
+head:
+  name: ???

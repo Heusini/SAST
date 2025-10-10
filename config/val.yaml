@@ -1,12 +1,13 @@
 defaults:
-  - dataset: ???
+  - dataset: gen4
   - model: rnndet
   - _self_
 
-checkpoint: ???
+checkpoint: null
 use_test_set: True
 hardware:
   num_workers:
+    train: 8
     eval: 4
   gpus: 0 # GPU idx (multi-gpu not supported for validation)
 batch_size:

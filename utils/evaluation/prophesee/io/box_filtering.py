@@ -32,5 +32,17 @@ def filter_boxes(boxes, skip_ts=int(5e5), min_box_diag=60, min_box_side=20):
     width = boxes['w']
     height = boxes['h']
     diag_square = width ** 2 + height ** 2
+
+    # print("Filtering Box")
+    # if (diag_square < min_box_diag ** 2).any():
+    #     print(f"Filtered diag: {diag_square=}")
+    # if (width < min_box_diag).any():
+    #     print(f"Filtered width: {width=}")
+    # if (height < min_box_side).any():
+    #     print(f"Filtered height: {height=}")
+    # if (ts < skip_ts).any():
+    #     print(f"Filtered time: {ts=}")
+    # print("End Filtering Box")
+
     mask = (ts > skip_ts) * (diag_square >= min_box_diag ** 2) * (width >= min_box_side) * (height >= min_box_side)
     return boxes[mask]

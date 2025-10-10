@@ -1,6 +1,8 @@
-from typing import Any, Optional, Tuple, Union, Dict
+from typing import Any, Optional, Tuple, Union, Dict, Callable
+from types import MethodType
 from warnings import warn
 
+import sys
 import numpy as np
 import pytorch_lightning as pl
 import torch
@@ -9,19 +11,22 @@ import torch.distributed as dist
 from omegaconf import DictConfig
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 
-from data.genx_utils.labels import ObjectLabels
-from data.utils.types import DataType, LstmStates, ObjDetOutput, DatasetSamplingMode, BackboneFeatures
+from data.utils.object_labels import ObjectLabels
+from data.utils.types import DataType, LstmStates, ObjDetOutput, DatasetSamplingMode, BackboneFeatures, ModelOutput
 from models.detection.yolox.utils.boxes import postprocess
 from models.detection.yolox_extension.models.detector import YoloXDetector
 from utils.evaluation.prophesee.evaluator import PropheseeEvaluator
+from utils.evaluation.evaluator import Evaluator
 from utils.evaluation.prophesee.io.box_loading import to_prophesee
 from utils.padding import InputPadderFromShape
 from .utils.detection import BackboneFeatureSelector, EventReprSelector, RNNStates, Mode, mode_2_string, \
     merge_mixed_batches
 
+from utils.timers import CudaTimer
+
 
 class Module(pl.LightningModule):
-    def __init__(self, full_config: DictConfig):
+    def __init__(self, full_config: DictConfig, model: th.nn.Module, step: Callable[[Any, Any, int, Mode],Any]):
         super().__init__()
 
         self.full_config = full_config
@@ -30,7 +35,13 @@ class Module(pl.LightningModule):
         in_res_hw = tuple(self.mdl_config.backbone.in_res_hw)
         self.input_padder = InputPadderFromShape(desired_hw=in_res_hw)
 
-        self.mdl = YoloXDetector(self.mdl_config)
+        self.mdl = model(self.mdl_config)
+
+        self.val_losses = []
+        self.classes = full_config.dataset.classes
+        self.step = MethodType(step, self)
+
+        self.val_losses = []
 
         self.mode_2_rnn_states: Dict[Mode, RNNStates] = {
             Mode.TRAIN: RNNStates(),
@@ -43,9 +54,13 @@ class Module(pl.LightningModule):
         self.mode_2_hw: Dict[Mode, Optional[Tuple[int, int]]] = {}
         self.mode_2_batch_size: Dict[Mode, Optional[int]] = {}
         self.mode_2_psee_evaluator: Dict[Mode, Optional[PropheseeEvaluator]] = {}
+        self.mode_2_evaluator: Dict[Mode, Optional[PropheseeEvaluator]] = {}
         self.mode_2_sampling_mode: Dict[Mode, DatasetSamplingMode] = {}
 
         self.started_training = True
+
+
+        height, width = self.mdl_config.backbone.in_res_hw
 
         dataset_train_sampling = self.full_config.dataset.train.sampling
         dataset_eval_sampling = self.full_config.dataset.eval.sampling
@@ -56,10 +71,8 @@ class Module(pl.LightningModule):
             self.train_metrics_config = self.full_config.logging.train.metrics
 
             if self.train_metrics_config.compute:
-                self.mode_2_psee_evaluator[Mode.TRAIN] = PropheseeEvaluator(
-                    dataset=dataset_name, downsample_by_2=self.full_config.dataset.downsample_by_factor_2)
-            self.mode_2_psee_evaluator[Mode.VAL] = PropheseeEvaluator(
-                dataset=dataset_name, downsample_by_2=self.full_config.dataset.downsample_by_factor_2)
+                self.mode_2_psee_evaluator[Mode.TRAIN] = Evaluator(self.classes, height, width)
+            self.mode_2_psee_evaluator[Mode.VAL] = Evaluator(self.classes, height, width)
             self.mode_2_sampling_mode[Mode.TRAIN] = dataset_train_sampling
             self.mode_2_sampling_mode[Mode.VAL] = dataset_eval_sampling
 
@@ -97,85 +110,47 @@ class Module(pl.LightningModule):
 
     def forward(self,
                 event_tensor: th.Tensor,
+                rgb_image: th.Tensor,
                 previous_states: Optional[LstmStates] = None) \
             -> Tuple[th.Tensor, th.Tensor, th.Tensor, th.Tensor]:
-        output = self.mdl.forward_backbone(x=event_tensor,
-                        previous_states=previous_states)[0]
-        output = [output[i] for i in [1, 2, 3, 4]]
+
+        with CudaTimer(torch.device('cuda'), "COMPLETE_FORWARD"):
+            output = self.mdl(x=event_tensor,
+                            rgb_image=rgb_image,
+                            previous_states=previous_states)
+
         return output
-    
+
     def get_worker_id_from_batch(self, batch: Any) -> int:
         return batch['worker_id']
 
     def get_data_from_batch(self, batch: Any):
         return batch['data']
 
+
+    def convert_labels_for_logging(self, predictions, obj_labels):
+        # get labels in xyxy format
+        gt_labels = [gt.get_labels_xyxy().detach().cpu().numpy() for gt in obj_labels]
+        # boxes are in xyxy format
+        pred_processed = [np.empty((0,7)) if pred is None else pred.detach().cpu().numpy() for pred in predictions]
+
+        return pred_processed, gt_labels
+
+
     def training_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
+        self.started_training = True
+        mode = Mode.TRAIN
         batch = merge_mixed_batches(batch)
         data = self.get_data_from_batch(batch)
         worker_id = self.get_worker_id_from_batch(batch)
-
-        mode = Mode.TRAIN
-        self.started_training = True
         step = self.trainer.global_step
-        ev_tensor_sequence = data[DataType.EV_REPR]
-        sparse_obj_labels = data[DataType.OBJLABELS_SEQ]
-        is_first_sample = data[DataType.IS_FIRST_SAMPLE]
-        token_mask_sequence = data.get(DataType.TOKEN_MASK, None)
 
-        self.mode_2_rnn_states[mode].reset(worker_id=worker_id, indices_or_bool_tensor=is_first_sample)
+        batch_size = self.full_config.batch_size.train
+        model_output = self.step(data, batch_idx, mode, worker_id)
 
-        sequence_len = len(ev_tensor_sequence)
-        assert sequence_len > 0
-        batch_size = len(sparse_obj_labels[0])
-        if self.mode_2_batch_size[mode] is None:
-            self.mode_2_batch_size[mode] = batch_size
-        else:
-            assert self.mode_2_batch_size[mode] == batch_size
-
-        prev_states = self.mode_2_rnn_states[mode].get_states(worker_id=worker_id)
-        backbone_feature_selector = BackboneFeatureSelector()
-        ev_repr_selector = EventReprSelector()
-        obj_labels = list()
-        P = 0
-        for tidx in range(sequence_len):
-            ev_tensors = ev_tensor_sequence[tidx]
-            ev_tensors = ev_tensors.to(dtype=self.dtype)
-            ev_tensors = self.input_padder.pad_tensor_ev_repr(ev_tensors)
-            if token_mask_sequence is not None:
-                token_masks = self.input_padder.pad_token_mask(token_mask=token_mask_sequence[tidx])
-            else:
-                token_masks = None
-
-            if self.mode_2_hw[mode] is None:
-                self.mode_2_hw[mode] = tuple(ev_tensors.shape[-2:])
-            else:
-                assert self.mode_2_hw[mode] == ev_tensors.shape[-2:]
-
-            backbone_features, states, p = self.mdl.forward_backbone(x=ev_tensors,
-                                                                  previous_states=prev_states,
-                                                                  token_mask=token_masks)
-            P += sum(p) / sequence_len
-            prev_states = states
-
-            current_labels, valid_batch_indices = sparse_obj_labels[tidx].get_valid_labels_and_batch_indices()
-            # Store backbone features that correspond to the available labels.
-            if len(current_labels) > 0:
-                backbone_feature_selector.add_backbone_features(backbone_features=backbone_features,
-                                                                selected_indices=valid_batch_indices)
-                obj_labels.extend(current_labels)
-                ev_repr_selector.add_event_representations(event_representations=ev_tensors,
-                                                           selected_indices=valid_batch_indices)
-
-        self.mode_2_rnn_states[mode].save_states_and_detach(worker_id=worker_id, states=prev_states)
-        assert len(obj_labels) > 0
-        # Batch the backbone features and labels to parallelize the detection code.
-        selected_backbone_features = backbone_feature_selector.get_batched_backbone_features()
-        labels_yolox = ObjectLabels.get_labels_as_batched_tensor(obj_label_list=obj_labels, format_='yolox')
-        labels_yolox = labels_yolox.to(dtype=self.dtype)
-
-        predictions, losses = self.mdl.forward_detect(backbone_features=selected_backbone_features,
-                                                      targets=labels_yolox)
+        predictions = model_output[ModelOutput.PREDICTIONS]
+        obj_labels = model_output[ModelOutput.GROUND_TRUTHS]
+        losses = model_output[ModelOutput.LOSSES]
 
         if self.mode_2_sampling_mode[mode] in (DatasetSamplingMode.MIXED, DatasetSamplingMode.RANDOM):
             # We only want to evaluate the last batch_size samples if we use random sampling (or mixed).
@@ -183,26 +158,38 @@ class Module(pl.LightningModule):
             predictions = predictions[-batch_size:]
             obj_labels = obj_labels[-batch_size:]
 
-        pred_processed = postprocess(prediction=predictions,
-                                     num_classes=self.mdl_config.head.num_classes,
-                                     conf_thre=self.mdl_config.postprocess.confidence_threshold,
-                                     nms_thre=self.mdl_config.postprocess.nms_threshold)
-
-        loaded_labels_proph, yolox_preds_proph = to_prophesee(obj_labels, pred_processed)
+        pred_processed, gt_processed = self.convert_labels_for_logging(predictions, obj_labels)
+        # print(f"{pred_processed=}")
+        # print(f"{gt_processed=}")
 
         assert losses is not None
         assert 'loss' in losses
 
-        self.smooth_loss(P, 3)
+        # self.smooth_loss(P, 3)
 
-        self.trainer._logger_connector.progress_bar_metrics['SN'] = self.p_loss // 1
-        self.trainer._logger_connector.progress_bar_metrics['N'] = P // 1
+        # self.trainer._logger_connector.progress_bar_metrics['SN'] = self.p_loss // 1
+        # self.trainer._logger_connector.progress_bar_metrics['N'] = P // 1
         self.trainer._logger_connector.progress_bar_metrics['STEP'] = self.trainer.global_step
+
         # For visualization, we only use the last batch_size items.
+        sparsity_mask = model_output.get(ModelOutput.SPARSITY_MASK)
+        if sparsity_mask is not None:
+            sparsity_mask = sparsity_mask.detach().cpu().numpy()
+            sparsity_mask = sparsity_mask[-batch_size:]
+
+        event_repr = model_output.get(ModelOutput.EVENT_DATA)
+        if event_repr is not None:
+            event_repr = event_repr[-batch_size:]
+        image_data = model_output.get(ModelOutput.IMAGE_DATA)
+        if image_data is not None:
+            image_data = image_data[-batch_size:]
+
         output = {
-            ObjDetOutput.LABELS_PROPH: loaded_labels_proph[-batch_size:],
-            ObjDetOutput.PRED_PROPH: yolox_preds_proph[-batch_size:],
-            ObjDetOutput.EV_REPR: ev_repr_selector.get_event_representations_as_list(start_idx=-batch_size),
+            ObjDetOutput.LABELS_PROPH: gt_processed[-batch_size:],
+            ObjDetOutput.PRED_PROPH: pred_processed[-batch_size:],
+            ObjDetOutput.SPARSITY_MASK: sparsity_mask,
+            ObjDetOutput.EV_REPR: event_repr,
+            ObjDetOutput.IMAGE_DATA: image_data,
             ObjDetOutput.SKIP_VIZ: False,
             'loss': losses['loss']
         }
@@ -213,89 +200,53 @@ class Module(pl.LightningModule):
         self.log_dict(log_dict, on_step=True, on_epoch=True, batch_size=batch_size, sync_dist=True)
 
         if mode in self.mode_2_psee_evaluator:
-            self.mode_2_psee_evaluator[mode].add_labels(loaded_labels_proph)
-            self.mode_2_psee_evaluator[mode].add_predictions(yolox_preds_proph)
+            self.mode_2_psee_evaluator[mode].add_labels(gt_processed)
+            self.mode_2_psee_evaluator[mode].add_predictions(pred_processed)
             if self.train_metrics_config.detection_metrics_every_n_steps is not None and \
                     step > 0 and step % self.train_metrics_config.detection_metrics_every_n_steps == 0:
                 self.run_psee_evaluator(mode=mode)
         return output
 
-    def _val_test_step_impl(self, batch: Any, mode: Mode) -> Optional[STEP_OUTPUT]:
+    def validation_step(self, batch: Any, batch_idx: int) -> Optional[STEP_OUTPUT]:
+        mode = Mode.VAL
         data = self.get_data_from_batch(batch)
         worker_id = self.get_worker_id_from_batch(batch)
 
-        assert mode in (Mode.VAL, Mode.TEST)
-        ev_tensor_sequence = data[DataType.EV_REPR]
-        sparse_obj_labels = data[DataType.OBJLABELS_SEQ]
-        is_first_sample = data[DataType.IS_FIRST_SAMPLE]
+        model_output = self.step(data, batch_idx, mode, worker_id)
 
-        self.mode_2_rnn_states[mode].reset(worker_id=worker_id, indices_or_bool_tensor=is_first_sample)
+        predictions = model_output[ModelOutput.PREDICTIONS]
+        obj_labels = model_output[ModelOutput.GROUND_TRUTHS]
+        losses = model_output[ModelOutput.LOSSES]
 
-        sequence_len = len(ev_tensor_sequence)
-        assert sequence_len > 0
-        batch_size = len(sparse_obj_labels[0])
-        if self.mode_2_batch_size[mode] is None:
-            self.mode_2_batch_size[mode] = batch_size
-        else:
-            assert self.mode_2_batch_size[mode] == batch_size
+        pred_processed, gt_processed = self.convert_labels_for_logging(predictions, obj_labels)
 
-        prev_states = self.mode_2_rnn_states[mode].get_states(worker_id=worker_id)
-        backbone_feature_selector = BackboneFeatureSelector()
-        ev_repr_selector = EventReprSelector()
-        obj_labels = list()
-        for tidx in range(sequence_len):
-            collect_predictions = (tidx == sequence_len - 1) or \
-                                  (self.mode_2_sampling_mode[mode] == DatasetSamplingMode.STREAM)
-            ev_tensors = ev_tensor_sequence[tidx]
-            ev_tensors = ev_tensors.to(dtype=self.dtype)
-            ev_tensors = self.input_padder.pad_tensor_ev_repr(ev_tensors)
-            if self.mode_2_hw[mode] is None:
-                self.mode_2_hw[mode] = tuple(ev_tensors.shape[-2:])
-            else:
-                assert self.mode_2_hw[mode] == ev_tensors.shape[-2:]
+        sparsity_mask = model_output.get(ModelOutput.SPARSITY_MASK)
+        if sparsity_mask is not None:
+            sparsity_mask = sparsity_mask.detach().cpu().numpy()
+            sparsity_mask = sparsity_mask[-1]
 
-            backbone_features, states, _ = self.mdl.forward_backbone(x=ev_tensors, previous_states=prev_states)
-            prev_states = states
+        event_repr = model_output.get(ModelOutput.EVENT_DATA)
+        if event_repr is not None:
+            event_repr = event_repr[-1]
+        image_data = model_output.get(ModelOutput.IMAGE_DATA)
+        if image_data is not None:
+            image_data = image_data[-1]
 
-            if collect_predictions:
-                current_labels, valid_batch_indices = sparse_obj_labels[tidx].get_valid_labels_and_batch_indices()
-                # Store backbone features that correspond to the available labels.
-                if len(current_labels) > 0:
-                    backbone_feature_selector.add_backbone_features(backbone_features=backbone_features,
-                                                                    selected_indices=valid_batch_indices)
-
-                    obj_labels.extend(current_labels)
-                    ev_repr_selector.add_event_representations(event_representations=ev_tensors,
-                                                               selected_indices=valid_batch_indices)
-        self.mode_2_rnn_states[mode].save_states_and_detach(worker_id=worker_id, states=prev_states)
-        if len(obj_labels) == 0:
-            return {ObjDetOutput.SKIP_VIZ: True}
-        selected_backbone_features = backbone_feature_selector.get_batched_backbone_features()
-        predictions, _ = self.mdl.forward_detect(backbone_features=selected_backbone_features)
-
-        pred_processed = postprocess(prediction=predictions,
-                                     num_classes=self.mdl_config.head.num_classes,
-                                     conf_thre=self.mdl_config.postprocess.confidence_threshold,
-                                     nms_thre=self.mdl_config.postprocess.nms_threshold)
-
-        loaded_labels_proph, yolox_preds_proph = to_prophesee(obj_labels, pred_processed)
-
-        # For visualization, we only use the last item (per batch).
         output = {
-            ObjDetOutput.LABELS_PROPH: loaded_labels_proph[-1],
-            ObjDetOutput.PRED_PROPH: yolox_preds_proph[-1],
-            ObjDetOutput.EV_REPR: ev_repr_selector.get_event_representations_as_list(start_idx=-1)[0],
+            ObjDetOutput.LABELS_PROPH: gt_processed[-1],
+            ObjDetOutput.PRED_PROPH: pred_processed[-1],
+            ObjDetOutput.EV_REPR: event_repr,
+            ObjDetOutput.SPARSITY_MASK: sparsity_mask,
+            ObjDetOutput.IMAGE_DATA: image_data,
             ObjDetOutput.SKIP_VIZ: False,
         }
 
         if self.started_training:
-            self.mode_2_psee_evaluator[mode].add_labels(loaded_labels_proph)
-            self.mode_2_psee_evaluator[mode].add_predictions(yolox_preds_proph)
+            self.mode_2_psee_evaluator[mode].add_labels(gt_processed)
+            self.mode_2_psee_evaluator[mode].add_predictions(pred_processed)
+            self.val_losses.append(losses)
 
         return output
-
-    def validation_step(self, batch: Any, batch_idx: int) -> Optional[STEP_OUTPUT]:
-        return self._val_test_step_impl(batch=batch, mode=Mode.VAL)
 
     def test_step(self, batch: Any, batch_idx: int) -> Optional[STEP_OUTPUT]:
         return self._val_test_step_impl(batch=batch, mode=Mode.TEST)
@@ -310,8 +261,9 @@ class Module(pl.LightningModule):
         assert batch_size is not None
         assert hw_tuple is not None
         if psee_evaluator.has_data():
-            metrics = psee_evaluator.evaluate_buffer(img_height=hw_tuple[0],
-                                                     img_width=hw_tuple[1])
+            # print("has_data")
+            metrics = psee_evaluator.evaluate_buffer()
+            # print(f"{metrics=}")
             assert metrics is not None
 
             prefix = f'{mode_2_string[mode]}/'
@@ -362,14 +314,6 @@ class Module(pl.LightningModule):
         else:
             warn(f'psee_evaluator has not data in {mode=}', UserWarning, stacklevel=2)
 
-    # def smooth_loss(self, step_loss, idx):
-    #     if self.trainer.global_step == 0:
-    #         self.loss = [0] * 5
-    #         self.loss[idx] = step_loss
-    #     else:
-    #         self.loss[idx] = (self.loss[idx] * (self.trainer.global_step) + step_loss) / (self.trainer.global_step + 1)
-    #     return self.loss[idx]
-
     def smooth_loss(self, step_loss, idx):
         if self.trainer.global_step == 0:
             self.iou_loss, self.conf_loss, self.cls_loss, self.p_loss = 0, 0, 0, 0
@@ -395,11 +339,74 @@ class Module(pl.LightningModule):
             # We don't know yet the value of train_height_width, so we skip this
             self.run_psee_evaluator(mode=mode)
 
+    def sum_losses(self, mode) -> Dict:
+        accumulated_loss = {}
+        prefix = f'{mode_2_string[mode]}/'
+        count = 0
+        for losses in self.val_losses:
+            count += 1
+            for k, v in losses.items():
+                if isinstance(v, (int, float)):
+                    value = torch.tensor(v)
+                elif isinstance(v, np.ndarray):
+                    value = torch.from_numpy(v)
+                elif isinstance(v, torch.Tensor):
+                    value = v
+                else:
+                    raise NotImplementedError
+                assert value.ndim == 0, f'tensor must be a scalar.\n{v=}\n{type(v)=}\n{value=}\n{type(value)=}'
+                if f"{prefix}{k}" not in accumulated_loss:
+                    accumulated_loss[f"{prefix}{k}"] = value.to(self.device)
+                else:
+                    accumulated_loss[f"{prefix}{k}"] += value.to(self.device)
+
+        for k in accumulated_loss:
+            accumulated_loss[k] /= count
+
+        return accumulated_loss
+
+    def log_wandb(self, log_dict):
+        step = self.trainer.global_step
+        if dist.is_available() and dist.is_initialized():
+            # We now have to manually sync (average the metrics) across processes in case of distributed training.
+            # NOTE: This is necessary to ensure that we have the same numbers for the checkpoint metric (metadata)
+            # and wandb metric:
+            # - checkpoint callback is using the self.log function which uses global sync (avg across ranks)
+            # - wandb uses log_metrics that we reduce manually to global rank 0
+            dist.barrier()
+            for k, v in log_dict.items():
+                dist.reduce(log_dict[k], dst=0, op=dist.ReduceOp.SUM)
+                if dist.get_rank() == 0:
+                    log_dict[k] /= dist.get_world_size()
+        if self.trainer.is_global_zero:
+            # For some reason we need to increase the step by 2 to enable consistent logging in wandb here.
+            # I might not understand wandb login correctly. This works reasonably well for now.
+            add_hack = 2
+            self.logger.log_metrics(metrics=log_dict, step=step + add_hack)
+
+            # Determine the maximum length of the keys
+            max_key_length = max(len(key) for key in log_dict.keys())
+            # Print the table
+            print(f"{'Metric':<{max_key_length}} | Value")
+            print("-" * (max_key_length + 3) + "+" + "-" * 6)
+            for key, value in log_dict.items():
+                if 'AP_S' not in key and 'AP_M' not in key and 'AP_L' not in key:
+                    value = f"{value * 100:.4f}%" 
+                    print(f"{key:<{max_key_length}} | {value}")
+
+
     def on_validation_epoch_end(self) -> None:
         mode = Mode.VAL
+        batch_size = self.mode_2_batch_size[mode]
         if self.started_training:
             assert self.mode_2_psee_evaluator[mode].has_data()
             self.run_psee_evaluator(mode=mode)
+
+        log_dict = self.sum_losses(mode)
+        self.log_dict(log_dict, on_step=False, on_epoch=True, batch_size=batch_size, sync_dist=True)
+        self.log_wandb(log_dict)
+        # clear losses list
+        self.val_losses = []
 
     def on_test_epoch_end(self) -> None:
         mode = Mode.TEST
@@ -409,7 +416,7 @@ class Module(pl.LightningModule):
     def configure_optimizers(self) -> Any:
         lr = self.train_config.learning_rate
         weight_decay = self.train_config.weight_decay
-        optimizer = th.optim.AdamW(self.mdl.parameters(), lr=lr, weight_decay=weight_decay)
+        optimizer = th.optim.AdamW(filter(lambda p: p.requires_grad,self.mdl.parameters()), lr=lr, weight_decay=weight_decay)
 
         scheduler_params = self.train_config.lr_scheduler
         if not scheduler_params.use:

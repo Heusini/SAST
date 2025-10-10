@@ -31,9 +31,9 @@ def main(config: DictConfig):
     # Just to check whether config can be resolved
     OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
 
-    print('------ Configuration ------')
-    print(OmegaConf.to_yaml(config))
-    print('---------------------------')
+    # print('------ Configuration ------')
+    # print(OmegaConf.to_yaml(config))
+    # print('---------------------------')
 
     # ---------------------
     # GPU options
@@ -69,6 +69,7 @@ def main(config: DictConfig):
     # Validation
     # ---------------------
 
+
     trainer = pl.Trainer(
         accelerator='gpu',
         callbacks=callbacks,
@@ -79,13 +80,22 @@ def main(config: DictConfig):
         precision=config.training.precision,
         move_metrics_to_cpu=False,
     )
+    data_module.setup('validate')
+    val_loader = data_module.val_dataloader()
+    print(f"Dataset size: {len(val_loader.dataset)}")
+    print(f"Num batches: {len(val_loader)}")
+    print(f"Batch size: {val_loader.batch_size}")
+    print(f"Sampler: {val_loader.sampler}")
+    print(f"Limit val batches: {trainer.limit_val_batches}")
+    
     with torch.inference_mode():
         if config.use_test_set:
             trainer.test(model=module, datamodule=data_module, ckpt_path=str(ckpt_path))
         else:
-            trainer.validate(model=module, datamodule=data_module, ckpt_path=str(ckpt_path))
+            trainer.validate(model=module, datamodule=data_module)
 
 
 if __name__ == '__main__':
     # torch.multiprocessing.set_start_method('spawn')
+    # torch.cuda.set_per_process_memory_fraction(0.18, device=1)
     main()

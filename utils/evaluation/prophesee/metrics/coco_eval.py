@@ -106,7 +106,8 @@ def _coco_eval(gts, detections, height, width, labelmap=("car", "pedestrian"), r
         num_detections += detection.size
 
     # Meaning: https://cocodataset.org/#detection-eval
-    out_keys = ('AP', 'AP_50', 'AP_75', 'AP_S', 'AP_M', 'AP_L')
+    out_keys = ('AP (all)', 'AP (IoU=0.50)', 'AP (IoU=0.75)', 'AP (small)', 'AP (medium)',
+                'AP (large)', 'AR (all)', 'AR (small)', 'AR (medium)', 'AR (large)')
     out_dict = {k: 0.0 for k in out_keys}
 
     if num_detections == 0:
@@ -123,6 +124,7 @@ def _coco_eval(gts, detections, height, width, labelmap=("car", "pedestrian"), r
 
     coco_eval = COCOeval(coco_gt, coco_pred, 'bbox')
     coco_eval.params.imgIds = np.arange(1, len(gts) + 1, dtype=int)
+
     coco_eval.evaluate()
     coco_eval.accumulate()
     if return_aps:
@@ -131,6 +133,7 @@ def _coco_eval(gts, detections, height, width, labelmap=("car", "pedestrian"), r
             coco_eval.summarize()
         for idx, key in enumerate(out_keys):
             out_dict[key] = coco_eval.stats[idx]
+        # out_dict = coco_eval.stats.tolist()
         return out_dict
     # Print the whole summary instead without return
     coco_eval.summarize()

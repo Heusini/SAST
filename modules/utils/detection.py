@@ -3,8 +3,9 @@ from typing import List, Optional, Union, Tuple, Dict, Any
 
 import torch
 import torch as th
+import numpy as np
 
-from data.genx_utils.labels import SparselyBatchedObjectLabels
+from data.utils.sparsely_batched_object_labels import SparselyBatchedObjectLabels
 from data.utils.types import BackboneFeatures, LstmStates, DatasetSamplingMode
 
 
@@ -30,19 +31,14 @@ class BackboneFeatureSelector:
         self.features = dict()
 
     def add_backbone_features(self,
-                              backbone_features: BackboneFeatures,
-                              selected_indices: Optional[List[int]] = None) -> None:
-        if selected_indices is not None:
-            assert len(selected_indices) > 0
+                              backbone_features: BackboneFeatures) -> None:
         for k, v in backbone_features.items():
             if k not in self.features:
-                self.features[k] = [v[selected_indices]] if selected_indices is not None else [v]
+                self.features[k] = [v]
             else:
-                self.features[k].append(v[selected_indices] if selected_indices is not None else v)
+                self.features[k].append(v)
 
     def get_batched_backbone_features(self) -> Optional[BackboneFeatures]:
-        if len(self.features) == 0:
-            return None
         return {k: th.cat(v, dim=0) for k, v in self.features.items()}
 
 
@@ -61,6 +57,8 @@ class EventReprSelector:
             self, event_representations: th.Tensor, selected_indices: Optional[List[int]] = None) -> None:
         if selected_indices is not None:
             assert len(selected_indices) > 0
+        else:
+            selected_indices = np.arange(0, event_representations.shape[0]).tolist()
         self.repr_list.extend(x[0] for x in event_representations[selected_indices].split(1))
 
     def get_event_representations_as_list(

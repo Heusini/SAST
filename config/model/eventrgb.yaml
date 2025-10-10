@@ -1,0 +1,11 @@
+defaults:
+  - base
+
+name: eventrgb
+checkpoint: sast.ckpt
+backbone:
+  name: ???
+fpn:
+  name: ???
+head:
+  name: ???

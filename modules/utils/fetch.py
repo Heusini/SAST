@@ -2,14 +2,45 @@ import pytorch_lightning as pl
 from omegaconf import DictConfig
 
 from modules.data.genx import DataModule as genx_data_module
-from modules.detection import Module as rnn_det_module
+
+from modules.detection import Module
 from models.detection.recurrent_backbone.sast_rnn import RNNDetector
+
+from modules.data.armasuisse import ArmaDataModule as genarma_data_module
+from data.arma_utils.armasuisse import ArmasuisseDataset
+from data.event_rgb.event_rgb_dataset import EventRGBDataset
+
+from modules.event_data_step import step as event_data_step
+from modules.event_rgb_step import step as event_rgb_step
+from modules.event_lwdetr_step import step as event_lwdetr_step
+from modules.eventrgb_lwdetr_step import step as eventrgb_lwdetr_step
+from modules.lwdetr_official_step import step as lwdetr_official_step
+from modules.lwdetr_official_rgb_step import step as lwdetr_official_rgb_step
+from modules.rgb_step import step as rgb_step
+
+from models.detection.event_rgb.detector import EventRGBDetector
+from models.detection.rgb_yolo.detector import RGBDetector
+from models.detection.yolox_extension.models.detector import YoloXDetector
+from models.detection.lwdetr.detector import LWDETRDetector
+from models.detection.lwdetr_official.detector import LWDETROfficial
 
 
 def fetch_model_module(config: DictConfig) -> pl.LightningModule:
     model_str = config.model.name
     if model_str == 'rnndet':
-        return rnn_det_module(config)
+        return Module(config, YoloXDetector, event_data_step)
+    if model_str == 'eventrgb':
+        return Module(config, EventRGBDetector, event_rgb_step)
+    if model_str == 'lwdetr':
+        return Module(config, LWDETRDetector, event_lwdetr_step)
+    if model_str == "rgb":
+        return Module(config, RGBDetector, rgb_step)
+    if model_str == "lwdetr_official":
+        return Module(config, LWDETROfficial, lwdetr_official_step)
+    if model_str == "lwdetr_official_rgb":
+        return Module(config, LWDETROfficial, lwdetr_official_rgb_step)
+
+        
     raise NotImplementedError
 
 
@@ -26,7 +57,22 @@ def fetch_data_module(config: DictConfig) -> pl.LightningDataModule:
                                 num_workers_eval=num_workers_eval,
                                 batch_size_train=batch_size_train,
                                 batch_size_eval=batch_size_eval)
-    raise NotImplementedError
+
+    dataset = None
+    if dataset_str in {'arma'}:
+        dataset = ArmasuisseDataset
+    if dataset_str in {'eventrgb'}:
+        dataset = EventRGBDataset
+    if not dataset:
+        raise NotImplementedError
+
+    return genarma_data_module(config.dataset,
+                            num_workers_train=num_workers_train,
+                            num_workers_eval=num_workers_eval,
+                            batch_size_train=batch_size_train,
+                            batch_size_eval=batch_size_eval,
+                            base_dataset=dataset,)
+
 
 
 def fetch_backbone_module(config: DictConfig) -> pl.LightningModule:

@@ -3,11 +3,12 @@ reproduce:
   deterministic_flag: False # Must be true for fully deterministic behaviour (slows down training)
   benchmark: False # Should be set to false for fully deterministic behaviour. Could potentially speed up training.
 training:
-  precision: 32
+  precision: 16
   max_epochs: 10000
   max_steps: 600000
   learning_rate: 0.0002
-  weight_decay: 0
+  # weight_decay: 0
+  weight_decay: 0.0001 #1e-4
   gradient_clip_val: 1.0
   limit_train_batches: 1.0
   lr_scheduler:
@@ -21,25 +22,26 @@ validation:
   val_check_interval: null # Optional[int]
   check_val_every_n_epoch: 1 # Optional[int]
 batch_size:
-  train: 8
-  eval: 8
+  train: 4
+  eval: 4
 hardware:
   num_workers:
-    train: 6
-    eval: 2
+    train: 8
+    eval: 4
   gpus: 0 # Either a single integer (e.g. 3) or a list of integers (e.g. [3,5,6])
+  cpus: null
   dist_backend: "nccl"
 logging:
   ckpt_every_n_epochs: 1
   train:
     metrics:
-      compute: false
+      compute: True
       detection_metrics_every_n_steps: null # Optional[int] -> null: every train epoch, int: every N steps
     log_model_every_n_steps: 5000
     log_every_n_steps: 500
     high_dim:
       enable: True
-      every_n_steps: 5000
+      every_n_steps: 1000
       n_samples: 4
   validation:
     high_dim:

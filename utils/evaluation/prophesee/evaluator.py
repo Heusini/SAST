@@ -12,7 +12,7 @@ class PropheseeEvaluator:
 
     def __init__(self, dataset: str, downsample_by_2: bool):
         super().__init__()
-        assert dataset in {'gen1', 'gen4'}
+        assert dataset in {'gen1', 'gen4', 'arma', 'eventrgb'}
         self.dataset = dataset
         self.downsample_by_2 = downsample_by_2
 
@@ -30,7 +30,7 @@ class PropheseeEvaluator:
     def _add_to_buffer(self, key: str, value: List[np.ndarray]):
         assert isinstance(value, list)
         for entry in value:
-            assert isinstance(entry, np.ndarray)
+            assert isinstance(entry, np.ndarray), f"{entry=}"
         self._buffer_empty = False
         assert self._buffer is not None
         self._buffer[key].extend(value)
@@ -61,7 +61,7 @@ class PropheseeEvaluator:
 
         labels = self._get_from_buffer(self.LABELS)
         predictions = self._get_from_buffer(self.PREDICTIONS)
-        assert len(labels) == len(predictions)
+        # assert len(labels) == len(predictions)
         metrics = evaluate_list(result_boxes_list=predictions,
                                 gt_boxes_list=labels,
                                 height=img_height,

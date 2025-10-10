@@ -59,6 +59,17 @@ class MyProgressBar(TQDMProgressBar):
         if not sys.stdout.isatty():
             bar.disable = True
         return bar
+
+
+def print_layer_sizes(model):
+    print(f"{'Layer':50} {'Param #':>10} {'Shape'}")
+    print("-" * 80)
+    yolox_head_count = 0
+    for name, param in model.named_parameters():
+        if param.requires_grad and name.startswith("mdl.yolox_head"):
+            print(f"{name:50} {param.numel():>10} {list(param.shape)}")
+            yolox_head_count += param.numel()
+    print(f"{yolox_head_count=}")
     
 @hydra.main(config_path='config', config_name='train', version_base='1.2')
 def main(config: DictConfig):
@@ -88,14 +99,25 @@ def main(config: DictConfig):
     # ---------------------
     # DDP
     # ---------------------
-    gpu_config = config.hardware.gpus
-    gpus = OmegaConf.to_container(gpu_config) if OmegaConf.is_config(gpu_config) else gpu_config
-    gpus = gpus if isinstance(gpus, list) else [gpus]
-    distributed_backend = config.hardware.dist_backend
-    assert distributed_backend in ('nccl', 'gloo'), f'{distributed_backend=}'
-    strategy = DDPStrategy(process_group_backend=distributed_backend,
-                           find_unused_parameters=False,
-                           gradient_as_bucket_view=True) if len(gpus) > 1 else None
+
+    devices = None
+    device_name = None
+    strategy = None
+    if config.hardware.cpus:
+        devices = config.hardware.cpus[0]
+        print(devices)
+        device_name = "cpu"
+    else:
+        gpu_config = config.hardware.gpus
+        gpus = OmegaConf.to_container(gpu_config) if OmegaConf.is_config(gpu_config) else gpu_config
+        gpus = gpus if isinstance(gpus, list) else [gpus]
+        devices = gpus
+        device_name = "gpu"
+        distributed_backend = config.hardware.dist_backend
+        assert distributed_backend in ('nccl', 'gloo'), f'{distributed_backend=}'
+        strategy = DDPStrategy(process_group_backend=distributed_backend,
+                               find_unused_parameters=False,
+                               gradient_as_bucket_view=True) if len(gpus) > 1 else None
 
     # ---------------------
     # Data
@@ -105,20 +127,47 @@ def main(config: DictConfig):
     # ---------------------
     # Logging and Checkpoints
     # ---------------------
+
+    # ---------------------
+    # Model
+    # ---------------------
+    ckpt_path = config.checkpoint
+    module = fetch_model_module(config=config)
+    # if ckpt_path is not None and config.wandb.wandb.resume_only_weights:
+    if ckpt_path:
+        print('Resuming only the weights instead of the full training state')
+        ckpt = torch.load(ckpt_path, map_location='cpu')
+        state_dict = ckpt["state_dict"]
+
+        backbone_str = "mdl.backbone."
+        backbone_dict = {k.replace(backbone_str, ""): v 
+                     for k, v in state_dict.items() if k.startswith(backbone_str)}
+
+        fpn_str = "mdl.fpn."
+        fpn_dict = {k.replace(fpn_str, ""): v 
+                     for k, v in state_dict.items() if k.startswith(fpn_str)}
+
+        module.mdl.backbone.load_state_dict(backbone_dict, strict=True)
+        module.mdl.fpn.load_state_dict(fpn_dict, strict=True)
+        if config.model.freeze:
+            for param in module.mdl.backbone.parameters():
+                param.requires_grad = False
+
+            for param in module.mdl.fpn.parameters():
+                param.requires_grad = False
+
+            module.mdl.backbone.eval()
+            module.mdl.fpn.eval()
+        ckpt_path = None
+
     logger = get_wandb_logger(config)
     # logger = CSVLogger(save_dir='./logs/', name='experiment_name')
     ckpt_path = None
     if config.wandb.artifact_name is not None:
         ckpt_path = get_ckpt_path(logger, wandb_config=config.wandb)
-
-    # ---------------------
-    # Model
-    # ---------------------
-    module = fetch_model_module(config=config)
-    if ckpt_path is not None and config.wandb.wandb.resume_only_weights:
-        print('Resuming only the weights instead of the full training state')
-        module = module.load_from_checkpoint(str(ckpt_path), **{'full_config': config}, strict=True)
-        ckpt_path = None
+    # print_layer_sizes(module)
+    # summary(module, input_size=(4, 20, 384, 640))
+    # sys.exit(0)
 
     # ---------------------
     # Callbacks and Misc
@@ -135,7 +184,7 @@ def main(config: DictConfig):
         callbacks.append(viz_callback)
     callbacks.append(ModelSummary(max_depth=2))
 
-    logger.watch(model=module, log='all', log_freq=config.logging.train.log_model_every_n_steps, log_graph=True)
+    # logger.watch(model=module, log='all', log_freq=config.logging.train.log_model_every_n_steps, log_graph=True)
 
     # ---------------------
     # Training
@@ -146,13 +195,14 @@ def main(config: DictConfig):
     assert val_check_interval is None or check_val_every_n_epoch is None
 
     trainer = pl.Trainer(
-        accelerator='gpu',
+        # accelerator='gpu',
+        accelerator=device_name,
         callbacks=callbacks,
         enable_checkpointing=True,
         val_check_interval=val_check_interval,
         check_val_every_n_epoch=check_val_every_n_epoch,
         default_root_dir='./output/',
-        devices=gpus,
+        devices=devices,
         gradient_clip_val=config.training.gradient_clip_val,
         gradient_clip_algorithm='value',
         limit_train_batches=config.training.limit_train_batches,
@@ -174,4 +224,5 @@ def main(config: DictConfig):
 
 
 if __name__ == '__main__':
+    # os.environ["WANDB_MODE"] = "disabled"
     main()
