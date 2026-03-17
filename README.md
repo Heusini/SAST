@@ -23,9 +23,9 @@ conda config --set channel_priority flexible
 
 CUDA_VERSION=11.8
 
-conda install -y h5py=3.8.0 blosc-hdf5-plugin=1.0.0
-hydra-core=1.3.2 einops=0.6.0 torchdata=0.6.0 tqdm numba
-pytorch=2.0.0 torchvision=0.15.0 pytorch-cuda=$CUDA_VERSION
+conda install -y h5py=3.8.0 blosc-hdf5-plugin=1.0.0 \
+hydra-core=1.3.2 einops=0.6.0 torchdata=0.6.0 tqdm numba \
+pytorch=2.0.0 torchvision=0.15.0 pytorch-cuda=$CUDA_VERSION \
 -c pytorch -c nvidia -c conda-forge
 
 python -m pip install pytorch-lightning==1.8.6 wandb==0.14.0 \
