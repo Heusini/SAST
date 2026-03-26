@@ -11,7 +11,7 @@ conda install -y h5py=3.8.0 blosc-hdf5-plugin=1.0.0 scipy \
 hydra-core=1.3.2 einops=0.6.0 torchdata=0.6.0 tqdm numba timm \
 -c conda-forge
 
-pip install torch==2.0.0 torchvision==0.15.1 torchaudio==2.0.1 --index-url https://download.pytorch.org/whl/cu118
+conda install pytorch==2.0.0 torchvision==0.15.0 torchaudio==2.0.0 pytorch-cuda=11.8 -c pytorch -c nvidia
 
 conda install -yc conda-forge fairscale
 
