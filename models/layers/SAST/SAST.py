@@ -132,14 +132,14 @@ class SAST_block(nn.Module):
             x = x.view(self.B * self.N, -1, self.dim)
             index_list1, index_list2 = index_list
             index_window, index_token, padding_index, asy_index, K = index_list1
-        M = len(index_window)
+        M = index_window.shape[0]
         
-        if len(index_token):
+        if index_token.shape[0]:
             # MS-WSA (Masked Sparse Window Self-Attention) 
             x = self.win_attn(x, index_window, index_token, padding_index, asy_index, M, self.B, self.enable_CB)
         x = window_reverse(x, self.partition_size, (img_size[0], img_size[1]))
         
-        index_count += len(asy_index) // self.B
+        index_count += asy_index.shape[0] // self.B
 
         ''' Second SAST Layer '''
         if self.first_block:
@@ -161,12 +161,12 @@ class SAST_block(nn.Module):
         x = x.view(self.B, img_size[0], img_size[1], self.dim)
         x = grid_partition(x, self.partition_size).view(self.B * self.N, -1, self.dim)
         
-        M = len(index_window)
-        if len(index_token): 
+        M = index_window.shape[0]
+        if index_token.shape[0]: 
             # MS-WSA (Masked Sparse Window Self-Attention) 
             x = self.grid_attn(x, index_window, index_token, padding_index, asy_index, M, self.B, self.enable_CB)
         x = grid_reverse(x, self.partition_size, (img_size[0], img_size[1]))
-        index_count += len(asy_index) // self.B
+        index_count += asy_index.shape[0] // self.B
         return x, index_count, [index_list1, index_list2]
 
     def forward(self, x: torch.Tensor, pos_emb: torch.Tensor, r: torch.Tensor, index_list: List) -> Tuple[torch.Tensor, ...]:
