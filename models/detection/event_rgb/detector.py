@@ -75,7 +75,7 @@ class EventRGBDetector(th.nn.Module):
                 targets: Optional[th.Tensor] = None) -> \
             Tuple[Union[th.Tensor, None], Union[Dict[str, th.Tensor], None], LstmStates, th.Tensor]:
         with CudaTimer(th.device('cuda'), "SAST"):
-            backbone_features, _, _ = self.backbone(x, previous_states)
+            backbone_features, previous_states, p = self.backbone(x, previous_states)
         with CudaTimer(th.device('cuda'), "EVENT_FPN"):
             fpn_features = self.fpn(backbone_features)
         with CudaTimer(th.device('cuda'), "RGB_FPN"):
@@ -87,6 +87,6 @@ class EventRGBDetector(th.nn.Module):
                 intermediate_features = th.add(f, r)
                 features.append(intermediate_features)
         with CudaTimer(th.device('cuda'), "YOLOX"):
-            predictions, _ = self.yolox_head(features, None)
+            predictions, loss = self.yolox_head(features, None)
 
-        return predictions
+        return predictions, loss, previous_states
