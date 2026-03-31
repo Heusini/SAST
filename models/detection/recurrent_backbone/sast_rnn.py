@@ -218,8 +218,8 @@ class PositionEmbeddingSine(nn.Module):
 
     def forward(self, x):
         B, H, W = x.shape[:3]
-        # self.pos_embedding = self.pos_embedding.to(x.device)
-        self.pos_embedding = self.pos_embedding
+        self.pos_embedding = self.pos_embedding.to(x.device)
+        # self.pos_embedding = self.pos_embedding
         pos = self.pos_embedding[:, :H, :W, :].repeat(B, 1, 1, 1)
         return pos
     
