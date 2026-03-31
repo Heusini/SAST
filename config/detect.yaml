@@ -67,8 +67,14 @@ model:
     confidence_threshold: 0.01
     nms_threshold: 0.45
 dataset:
-  classes: 1
-checkpoint: /home/sheusinger/sast.ckpt                                        ####################
+  name: eventrgb
+  ev_repr_name: 'stacked_histogram_dt=50_nbins=10'
+  sequence_length: 5
+  classes: ["drone"]
+  resolution_hw: [360, 640]
+  downsample_by_factor_2: False
+  only_load_end_labels: False
+checkpoint: /home/sheusinger/repos/SAST/sast_trained.ckpt
 data_src: /home/sheusinger/SAST/
 data_name: test_data                                                                                  ####################
 half: true                                                                                            ####################                                                                                 ####################
