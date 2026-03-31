@@ -10,37 +10,15 @@ from modules.data.armasuisse import ArmaDataModule as genarma_data_module
 from data.arma_utils.armasuisse import ArmasuisseDataset
 from data.event_rgb.event_rgb_dataset import EventRGBDataset
 
-from modules.event_data_step import step as event_data_step
 from modules.event_rgb_step import step as event_rgb_step
-from modules.event_lwdetr_step import step as event_lwdetr_step
-from modules.eventrgb_lwdetr_step import step as eventrgb_lwdetr_step
-from modules.lwdetr_official_step import step as lwdetr_official_step
-from modules.lwdetr_official_rgb_step import step as lwdetr_official_rgb_step
-from modules.rgb_step import step as rgb_step
 
 from models.detection.event_rgb.detector import EventRGBDetector
-from models.detection.rgb_yolo.detector import RGBDetector
 from models.detection.yolox_extension.models.detector import YoloXDetector
-from models.detection.lwdetr.detector import LWDETRDetector
-from models.detection.lwdetr_official.detector import LWDETROfficial
 
 
 def fetch_model_module(config: DictConfig) -> pl.LightningModule:
-    model_str = config.model.name
-    if model_str == 'rnndet':
-        return Module(config, YoloXDetector, event_data_step)
-    if model_str == 'eventrgb':
+    if config.model.name == 'eventrgb':
         return Module(config, EventRGBDetector, event_rgb_step)
-    if model_str == 'lwdetr':
-        return Module(config, LWDETRDetector, event_lwdetr_step)
-    if model_str == "rgb":
-        return Module(config, RGBDetector, rgb_step)
-    if model_str == "lwdetr_official":
-        return Module(config, LWDETROfficial, lwdetr_official_step)
-    if model_str == "lwdetr_official_rgb":
-        return Module(config, LWDETROfficial, lwdetr_official_rgb_step)
-
-        
     raise NotImplementedError
 
 
@@ -51,12 +29,6 @@ def fetch_data_module(config: DictConfig) -> pl.LightningDataModule:
     num_workers_train = config.hardware.num_workers.get('train', num_workers_generic)
     num_workers_eval = config.hardware.num_workers.get('eval', num_workers_generic)
     dataset_str = config.dataset.name
-    if dataset_str in {'gen1', 'gen4'}:
-        return genx_data_module(config.dataset,
-                                num_workers_train=num_workers_train,
-                                num_workers_eval=num_workers_eval,
-                                batch_size_train=batch_size_train,
-                                batch_size_eval=batch_size_eval)
 
     dataset = None
     if dataset_str in {'arma'}:

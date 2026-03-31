@@ -21,7 +21,8 @@ def dynamically_modify_train_config(config: DictConfig):
 
         mdl_cfg = config.model
         mdl_name = mdl_cfg.name
-        if mdl_name in ['rnndet', 'eventrgb', 'lwdetr', 'rgb', 'lwdetr_official', 'lwdetr_official_rgb']:
+        if mdl_name in ['rnndet', 'eventrgb']:
+            print("modifier")
             backbone_cfg = mdl_cfg.backbone
             backbone_name = backbone_cfg.name
             if backbone_name == 'SASTRNN':
@@ -44,7 +45,6 @@ def dynamically_modify_train_config(config: DictConfig):
                 raise NotImplementedError
 
             num_classes = len(config.dataset.classes)
-
             mdl_cfg.head.num_classes = num_classes
             print(f'Set {num_classes=} for detection head')
         else:
